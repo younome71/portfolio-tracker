@@ -55,7 +55,7 @@ export default function Footer() {
               <Group spacing="lg">
                 <Anchor 
                   component={Link} 
-                  href="/about" 
+                  href="/" 
                   size="sm"
                   color={theme.colorScheme === 'dark' ? 'gray.5' : 'gray.7'}
                   sx={{ '&:hover': { color: theme.colors.indigo[5] } }}
@@ -64,7 +64,7 @@ export default function Footer() {
                 </Anchor>
                 <Anchor 
                   component={Link} 
-                  href="/privacy" 
+                  href="/" 
                   size="sm"
                   color={theme.colorScheme === 'dark' ? 'gray.5' : 'gray.7'}
                   sx={{ '&:hover': { color: theme.colors.indigo[5] } }}
@@ -73,7 +73,7 @@ export default function Footer() {
                 </Anchor>
                 <Anchor 
                   component={Link} 
-                  href="/contact" 
+                  href="/" 
                   size="sm"
                   color={theme.colorScheme === 'dark' ? 'gray.5' : 'gray.7'}
                   sx={{ '&:hover': { color: theme.colors.indigo[5] } }}
