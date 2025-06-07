@@ -1,0 +1,80 @@
+﻿@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* No need to import CSS - Mantine v6 uses CSS-in-JS */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+  /* Use Mantine theme colors through CSS variables */
+  color: var(--mantine-color-text);
+  background-color: var(--mantine-color-body);
+}
+
+/* Scrollbar styling using Mantine colors */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--mantine-color-gray-0);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--mantine-color-gray-5);
+  border-radius: var(--mantine-radius-md);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--mantine-color-gray-7);
+}
+
+/* Loading spinner */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+  color: var(--mantine-color-blue-6);
+}
+
+/* Mantine-like utility classes */
+.mantine-text {
+  color: var(--mantine-color-text);
+}
+
+.mantine-heading {
+  color: var(--mantine-color-heading);
+  font-weight: 600;
+  line-height: var(--mantine-line-height-lg);
+}
+
+.mantine-card {
+  background-color: var(--mantine-color-body);
+  border-radius: var(--mantine-radius-md);
+  padding: var(--mantine-spacing-lg);
+  box-shadow: var(--mantine-shadow-sm);
+  border: 1px solid var(--mantine-color-gray-2);
+}
+
+.mantine-button {
+  border-radius: var(--mantine-radius-sm);
+  padding: var(--mantine-spacing-xs) var(--mantine-spacing-md);
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.mantine-button-primary {
+  background-color: var(--mantine-color-blue-6);
+  color: var(--mantine-color-white);
+}
+
+.mantine-button-primary:hover {
+  background-color: var(--mantine-color-blue-7);
+}
