@@ -2,7 +2,7 @@
 import { store } from '../store';
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'https://portfolio-tracker-ip4u.onrender.com/',
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'https://portfolio-tracker-ip4u.onrender.com',
 });
 
 // Add a request interceptor to include the auth token

@@ -2,13 +2,15 @@
 import axios from "axios";
 const { jwtDecode } = require("jwt-decode");
 
+const API_URL = "https://portfolio-tracker-ip4u.onrender.com/api/auth"; // Adjust as needed
+
 // Async thunk for user registration
 export const registerUser = createAsyncThunk(
   "auth/register",
   async (userData, thunkAPI) => {
     try {
       const response = await axios.post(
-        "http://localhost:5000/api/auth/register",
+        "https://portfolio-tracker-ip4u.onrender.com/api/auth/register",
         userData
       );
       return response.data; // expected to contain a token
@@ -26,7 +28,7 @@ export const loginUser = createAsyncThunk(
   async (credentials, thunkAPI) => {
     try {
       const response = await axios.post(
-        "http://localhost:5000/api/auth/login",
+        "https://portfolio-tracker-ip4u.onrender.com/api/auth/login",
         credentials
       ); // adjust endpoint if needed
       return response.data;
@@ -49,7 +51,7 @@ export const fetchUserProfile = createAsyncThunk(
 
     try {
       const response = await axios.get(
-        `http://localhost:5000/api/user/profile/${id}`,
+        `https://portfolio-tracker-ip4u.onrender.com/api/user/profile/${id}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
