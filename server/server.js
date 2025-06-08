@@ -3,7 +3,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const cron = require('node-cron');
-const path = require('path'); // ← Add this
+const path = require('path');
 const { updateStockPrices } = require('./services/stockService');
 const authRoutes = require('./routes/auth');
 const portfolioRoutes = require('./routes/portfolio');
@@ -39,12 +39,11 @@ updateStockPrices()
   .then(() => console.log('Initial stock price update complete.'))
   .catch(console.error);
 
-// ✅ Serve frontend after API routes
+// Serve frontend after API routes
 app.use(express.static(path.join(__dirname, '../client/build')));
 app.get(/^\/(?!api).*/, (req, res) => {
   res.sendFile(path.join(__dirname, '../client/build/index.html'));
 });
 
-
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
