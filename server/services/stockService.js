@@ -76,28 +76,57 @@ async function fetchStockPrice(symbol) {
 
 async function updateStockPrices() {
   try {
-    // Get all portfolios with assets
     const portfolios = await Portfolio.find({ "assets.0": { $exists: true } });
+
+    const now = new Date();
+    const marketStart = new Date();
+    marketStart.setHours(9, 15, 0, 0);
+
+    // Skip the entire update if current time is before 09:15 AM
+    if (now < marketStart) {
+      console.log("Skipping price update: Before 09:15 AM");
+      return;
+    }
 
     for (const portfolio of portfolios) {
       for (const asset of portfolio.assets) {
         try {
           const currentPrice = await fetchStockPrice(asset.symbol);
 
-          // Update current price and add to history if changed
           if (asset.currentPrice !== currentPrice) {
             asset.currentPrice = currentPrice;
-            asset.priceHistory.push({
-              date: new Date(),
-              price: currentPrice,
+
+            const startOfDay = new Date();
+            startOfDay.setHours(9, 15, 0, 0);
+            startOfDay.setMilliseconds(0);
+
+            // Check if there's already a priceHistory entry for today after 09:15 AM
+            const existingEntry = asset.priceHistory.find(entry => {
+              const entryDate = new Date(entry.date);
+              return (
+                entryDate >= startOfDay &&
+                entryDate.toDateString() === now.toDateString()
+              );
             });
+
+            if (existingEntry) {
+              // Update the existing entry
+              existingEntry.price = currentPrice;
+              existingEntry.date = now;
+            } else {
+              // Add a new entry
+              asset.priceHistory.push({
+                date: now,
+                price: currentPrice,
+              });
+            }
           }
         } catch (err) {
           console.error(
             `Error updating price for ${asset.symbol} in portfolio ${portfolio._id}:`,
             err.message
           );
-          await sleep(1000); // Sleep to avoid hitting API limits
+          await sleep(1500); // Sleep to avoid hitting API limits
         }
       }
 
@@ -110,6 +139,8 @@ async function updateStockPrices() {
     throw err;
   }
 }
+
+
 
 module.exports = {
   fetchLTP,
