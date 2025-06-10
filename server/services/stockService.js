@@ -8,9 +8,8 @@ const BASE_URL = "https://www.alphavantage.co/query";
 const stockCache = {};
 
 function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
-
 
 async function fetchLTP(symbol) {
   const url = `https://www.screener.in/company/${symbol.toLowerCase()}/`;
@@ -74,17 +73,27 @@ async function fetchStockPrice(symbol) {
   return ltp;
 }
 
+function getISTDate() {
+  const now = new Date();
+  // IST is UTC + 5:30 → 5 * 60 + 30 = 330 minutes
+  const offsetInMinutes = 330;
+  const istTime = new Date(
+    now.getTime() + offsetInMinutes * 60000 - now.getTimezoneOffset() * 60000
+  );
+  return istTime;
+}
+
 async function updateStockPrices() {
   try {
     const portfolios = await Portfolio.find({ "assets.0": { $exists: true } });
 
-    const now = new Date();
-    const marketStart = new Date();
+    const now = getISTDate();
+    const marketStart = new Date(now);
     marketStart.setHours(9, 15, 0, 0);
+    marketStart.setMilliseconds(0);
 
-    // Skip the entire update if current time is before 09:15 AM
     if (now < marketStart) {
-      console.log("Skipping price update: Before 09:15 AM");
+      console.log("Skipping price update: Before 09:15 AM IST");
       return;
     }
 
@@ -96,13 +105,12 @@ async function updateStockPrices() {
           if (asset.currentPrice !== currentPrice) {
             asset.currentPrice = currentPrice;
 
-            const startOfDay = new Date();
+            const startOfDay = new Date(now);
             startOfDay.setHours(9, 15, 0, 0);
             startOfDay.setMilliseconds(0);
 
-            // Check if there's already a priceHistory entry for today after 09:15 AM
-            const existingEntry = asset.priceHistory.find(entry => {
-              const entryDate = new Date(entry.date);
+            const existingEntry = asset.priceHistory.find((entry) => {
+              const entryDate = getISTDateFromUTC(entry.date);
               return (
                 entryDate >= startOfDay &&
                 entryDate.toDateString() === now.toDateString()
@@ -110,11 +118,9 @@ async function updateStockPrices() {
             });
 
             if (existingEntry) {
-              // Update the existing entry
               existingEntry.price = currentPrice;
               existingEntry.date = now;
             } else {
-              // Add a new entry
               asset.priceHistory.push({
                 date: now,
                 price: currentPrice,
@@ -126,21 +132,31 @@ async function updateStockPrices() {
             `Error updating price for ${asset.symbol} in portfolio ${portfolio._id}:`,
             err.message
           );
-          await sleep(1500); // Sleep to avoid hitting API limits
+          await sleep(2000);
         }
       }
 
       await portfolio.save();
     }
 
-    console.log(`Updated stock prices for ${portfolios.length} portfolios`);
+    console.log(
+      `Updated stock prices for ${
+        portfolios.length
+      } portfolios at ${now.toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
+      })}`
+    );
   } catch (err) {
     console.error("Error in stock price update job:", err);
     throw err;
   }
 }
 
-
+function getISTDateFromUTC(utcDate) {
+  const date = new Date(utcDate);
+  const offsetInMinutes = 330;
+  return new Date(date.getTime() + offsetInMinutes * 60000);
+}
 
 module.exports = {
   fetchLTP,
