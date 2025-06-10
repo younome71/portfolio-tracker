@@ -16,6 +16,7 @@ import {
   createStyles,
   MediaQuery,
   Progress,
+  Stack,
 } from "@mantine/core";
 import {
   IconTrash,
@@ -127,13 +128,13 @@ const useStyles = createStyles((theme) => ({
   },
 
   mobileHidden: {
-    [theme.fn.smallerThan("md")]: {
+    [theme.fn.smallerThan("sm")]: {
       display: "none",
     },
   },
 
   mobileVisible: {
-    [theme.fn.largerThan("md")]: {
+    [theme.fn.largerThan("sm")]: {
       display: "none",
     },
   },
@@ -190,6 +191,54 @@ const useStyles = createStyles((theme) => ({
     border: `1px solid ${
       theme.colorScheme === "dark" ? theme.colors.dark[4] : theme.colors.gray[2]
     }`,
+    [theme.fn.smallerThan("sm")]: {
+      maxHeight: "none",
+      border: "none",
+      borderRadius: 0,
+    },
+  },
+
+  // Mobile specific styles
+  mobileRow: {
+    display: "flex",
+    flexDirection: "column",
+    padding: theme.spacing.sm,
+    borderBottom: `1px solid ${
+      theme.colorScheme === "dark" ? theme.colors.dark[4] : theme.colors.gray[2]
+    }`,
+  },
+
+  mobileRowHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: theme.spacing.xs,
+  },
+
+  mobileRowDetails: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, 1fr)",
+    gap: theme.spacing.sm,
+  },
+
+  mobileLabel: {
+    fontSize: theme.fontSizes.xs,
+    color:
+      theme.colorScheme === "dark"
+        ? theme.colors.dark[2]
+        : theme.colors.gray[6],
+    marginBottom: 2,
+  },
+
+  mobileValue: {
+    fontSize: theme.fontSizes.sm,
+    fontWeight: 500,
+  },
+
+  mobilePnl: {
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
   },
 }));
 
@@ -220,23 +269,21 @@ export default function AssetTable({ portfolio, canEdit = true }) {
     loadStockNames();
   }, []);
 
-  // Calculate daily change for each asset
   const calculateDailyChange = (asset) => {
     if (!asset.priceHistory || asset.priceHistory.length < 2) return null;
-    
+
     const sortedHistory = [...asset.priceHistory].sort(
       (a, b) => new Date(a.date) - new Date(b.date)
     );
-    
+
     const yesterday = sortedHistory[sortedHistory.length - 2]?.price;
     const today = sortedHistory[sortedHistory.length - 1]?.price;
-    
+
     if (!yesterday || !today || yesterday === 0) return null;
-    
+
     return ((today - yesterday) / yesterday) * 100;
   };
 
-  // Group and sort assets with daily change
   const groupedAndSortedAssets = useMemo(() => {
     const groups = {};
 
@@ -260,16 +307,18 @@ export default function AssetTable({ portfolio, canEdit = true }) {
     return Object.entries(groups)
       .map(([symbol, assets]) => {
         const totals = calculateGroupTotals(assets);
-        const dailyChanges = assets.map(a => a.dailyChange).filter(Boolean);
-        const avgDailyChange = dailyChanges.length > 0 
-          ? dailyChanges.reduce((sum, val) => sum + val, 0) / dailyChanges.length
-          : null;
-          
-        return { 
-          symbol, 
-          assets, 
+        const dailyChanges = assets.map((a) => a.dailyChange).filter(Boolean);
+        const avgDailyChange =
+          dailyChanges.length > 0
+            ? dailyChanges.reduce((sum, val) => sum + val, 0) /
+              dailyChanges.length
+            : null;
+
+        return {
+          symbol,
+          assets,
           totals,
-          avgDailyChange
+          avgDailyChange,
         };
       })
       .sort((a, b) => b.totals.totalValue - a.totals.totalValue);
@@ -335,304 +384,535 @@ export default function AssetTable({ portfolio, canEdit = true }) {
   };
 
   const renderChangeIndicator = (value) => {
-    if (value === null || value === undefined) return (
-      <Text size="sm" color="dimmed">-</Text>
-    );
-    
+    if (value === null || value === undefined)
+      return (
+        <Text size="sm" color="dimmed">
+          -
+        </Text>
+      );
+
     const isPositive = value >= 0;
     const Icon = isPositive ? IconArrowUpRight : IconArrowDownRight;
-    
+
     return (
       <Group spacing={4} position="right" noWrap>
-        <Icon size={14} className={isPositive ? classes.positiveChange : classes.negativeChange} />
-        <Text size="sm" className={isPositive ? classes.positiveChange : classes.negativeChange}>
+        <Icon
+          size={14}
+          className={
+            isPositive ? classes.positiveChange : classes.negativeChange
+          }
+        />
+        <Text
+          size="sm"
+          className={
+            isPositive ? classes.positiveChange : classes.negativeChange
+          }
+        >
           {Math.abs(value).toFixed(2)}%
         </Text>
       </Group>
     );
   };
 
-  return (
-    <Box className={classes.tableContainer}>
-      <LoadingOverlay visible={loading} overlayBlur={2} />
+  const renderMobileAssetRow = (asset) => {
+    const assetValue = asset.quantity * asset.currentPrice;
+    const assetPnL = calculatePnL(asset.currentPrice, asset.averagePrice);
+    const assetPnLValue =
+      (asset.currentPrice - asset.averagePrice) * asset.quantity;
+    const isAssetProfit = assetPnL >= 0;
 
-      <Table
-        striped
-        highlightOnHover
-        withColumnBorders
-        sx={{
-          borderCollapse: "separate",
-          borderSpacing: 0,
-          tableLayout: "fixed",
-        }}
-      >
-        <thead className={classes.tableHeader}>
-          <tr>
-            <th style={{ width: "22%" }}>Security</th>
-            <th
-              className={classes.mobileHidden}
-              style={{ width: "10%", textAlign: "right" }}
-            >
-              Quantity
-            </th>
-            <th
-              className={classes.mobileHidden}
-              style={{ width: "10%", textAlign: "right" }}
-            >
-              Avg Price
-            </th>
-            <th
-              className={classes.mobileHidden}
-              style={{ width: "10%", textAlign: "right" }}
-            >
-              LTP
-            </th>
-            <th style={{ width: "12%", textAlign: "right" }}>Value</th>
-            <th className={classes.dayChangeCell} style={{ textAlign: "right" }}>24h Change</th>
-            <th className={classes.pnlCell} style={{ textAlign: "right" }}>
-              P&L
-            </th>
-            {canEdit && <th style={{ width: "8%" }}>Actions</th>}
-          </tr>
-        </thead>
-
-        <tbody>
-          {groupedAndSortedAssets.map(({ symbol, assets, totals, avgDailyChange }) => {
-            const isExpanded = expandedGroups[symbol];
-            const avgPrice = totals.totalInvestment / totals.totalQuantity;
-            const currentPrice = totals.totalValue / totals.totalQuantity;
-            const groupPnL = calculatePnL(currentPrice, avgPrice);
-            const groupPnLValue = totals.totalValue - totals.totalInvestment;
-            const isProfit = groupPnL >= 0;
-
-            return (
-              <React.Fragment key={symbol}>
-                <tr
-                  className={`${classes.groupHeader} ${
-                    isExpanded ? classes.expanded : ""
-                  }`}
-                  onClick={() => toggleGroup(symbol)}
-                  aria-expanded={isExpanded}
+    return (
+      <Box key={asset._id} className={classes.mobileRow}>
+        <div className={classes.mobileRowHeader}>
+          <Text weight={600}>{asset.symbol.split(".")[0]}</Text>
+          {canEdit && (
+            <Group spacing="xs">
+              <Tooltip label="Delete asset" withArrow>
+                <ActionIcon
+                  size="sm"
+                  variant="subtle"
+                  color="red"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete(asset._id);
+                  }}
+                  loading={isDeleting === asset._id}
                 >
-                  <td className={classes.symbolCell}>
-                    <Group spacing={4} align="center" noWrap>
-                      <Text fw={600}>{symbol}</Text>
-                      <Badge
-                        color="blue"
-                        variant="light"
-                        leftSection={<IconInfoCircle size={12} />}
-                        radius="sm"
-                        size="xs"
-                        style={{ height: 18 }}
-                      >
-                        {assets.length} {assets.length > 1 ? "HOLDINGS" : "HOLDING"}
-                      </Badge>
-                      {isExpanded ? (
-                        <IconChevronUp size={16} />
-                      ) : (
-                        <IconChevronDown size={16} />
-                      )}
-                    </Group>
-                  </td>
-                  <td
-                    className={`${classes.quantityCell} ${classes.mobileHidden}`}
-                  >
-                    {formatQuantity(totals.totalQuantity)}
-                  </td>
-                  <td
-                    className={`${classes.priceCell} ${classes.mobileHidden}`}
-                  >
-                    {formatCurrency(avgPrice)}
-                  </td>
-                  <td
-                    className={`${classes.priceCell} ${classes.mobileHidden}`}
-                  >
-                    {formatCurrency(currentPrice)}
-                  </td>
-                  <td className={`${classes.priceCell} ${classes.valueCell}`}>
-                    {formatCurrency(totals.totalValue)}
-                  </td>
-                  <td className={classes.dayChangeCell}>
-                    {renderChangeIndicator(avgDailyChange)}
-                  </td>
-                  <td className={classes.pnlCell}>
-                    <Group spacing={4} position="right" noWrap>
-                      {isProfit ? (
-                        <IconTrendingUp
-                          size={16}
-                          className={classes.positivePnl}
-                        />
-                      ) : (
-                        <IconTrendingDown
-                          size={16}
-                          className={classes.negativePnl}
-                        />
-                      )}
-                      <Text
-                        className={
-                          isProfit ? classes.positivePnl : classes.negativePnl
-                        }
-                      >
-                        {groupPnL.toFixed(2)}%
-                      </Text>
-                      <Text
-                        size="xs"
-                        color="dimmed"
-                        className={classes.mobileHidden}
-                      >
-                        ({formatCurrency(groupPnLValue)})
-                      </Text>
-                    </Group>
-                  </td>
-                  {canEdit && (
-                    <td className={classes.actionCell}>
-                      <Tooltip label="Add asset" withArrow>
-                        <ActionIcon
-                          className={classes.addButton}
-                          size="sm"
-                          variant="subtle"
-                          color="green"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            router.push(
-                              `/portfolio/${portfolio._id}/repeatAsset?symbol=${symbol}`
-                            );
-                          }}
-                        >
-                          <IconPlus size={16} strokeWidth={2.5} />
-                        </ActionIcon>
-                      </Tooltip>
-                    </td>
-                  )}
-                </tr>
+                  <IconTrash size={16} />
+                </ActionIcon>
+              </Tooltip>
+            </Group>
+          )}
+        </div>
 
-                <tr>
-                  <td colSpan={canEdit ? 8 : 7} style={{ padding: 0 }}>
-                    <Collapse in={isExpanded}>
-                      <Table striped highlightOnHover withColumnBorders>
-                        <tbody>
-                          {assets.map((asset) => {
-                            const assetValue =
-                              asset.quantity * asset.currentPrice;
-                            const assetPnL = calculatePnL(
-                              asset.currentPrice,
-                              asset.averagePrice
-                            );
-                            const assetPnLValue =
-                              (asset.currentPrice - asset.averagePrice) *
-                              asset.quantity;
-                            const isAssetProfit = assetPnL >= 0;
+        <div className={classes.mobileRowDetails}>
+          <div>
+            <Text className={classes.mobileLabel}>Quantity</Text>
+            <Text className={classes.mobileValue}>
+              {formatQuantity(asset.quantity)}
+            </Text>
+          </div>
 
-                            return (
-                              <tr
-                                key={asset._id}
-                                className={classes.expandedRow}
-                              >
-                                <td style={{ paddingLeft: 40 }}>
-                                  <Group spacing="sm" noWrap>
-                                    <Text size="sm" color="dimmed">
-                                      {asset.symbol.split(".")[0]}
-                                    </Text>
-                                    {asset.exchange && (
-                                      <Badge
-                                        size="xs"
-                                        color="gray"
-                                        variant="outline"
-                                        className={classes.exchangeBadge}
+          <div>
+            <Text className={classes.mobileLabel}>Avg Price</Text>
+            <Text className={classes.mobileValue}>
+              {formatCurrency(asset.averagePrice)}
+            </Text>
+          </div>
+
+          <div>
+            <Text className={classes.mobileLabel}>LTP</Text>
+            <Text className={classes.mobileValue}>
+              {formatCurrency(asset.currentPrice)}
+            </Text>
+          </div>
+
+          <div>
+            <Text className={classes.mobileLabel}>Value</Text>
+            <Text className={classes.mobileValue}>
+              {formatCurrency(assetValue)}
+            </Text>
+          </div>
+
+          <div>
+            <Text className={classes.mobileLabel}>24h Change</Text>
+            {renderChangeIndicator(asset.dailyChange)}
+          </div>
+
+          <div>
+            <Text className={classes.mobileLabel}>P&L</Text>
+            <div className={classes.mobilePnl}>
+              {isAssetProfit ? (
+                <IconTrendingUp size={14} className={classes.positivePnl} />
+              ) : (
+                <IconTrendingDown size={14} className={classes.negativePnl} />
+              )}
+              <Text
+                className={
+                  isAssetProfit ? classes.positivePnl : classes.negativePnl
+                }
+              >
+                {assetPnL.toFixed(2)}% ({formatCurrency(assetPnLValue)})
+              </Text>
+            </div>
+          </div>
+        </div>
+      </Box>
+    );
+  };
+
+  const renderMobileGroup = ({ symbol, assets, totals, avgDailyChange }) => {
+    const isExpanded = expandedGroups[symbol];
+    const avgPrice = totals.totalInvestment / totals.totalQuantity;
+    const currentPrice = totals.totalValue / totals.totalQuantity;
+    const groupPnL = calculatePnL(currentPrice, avgPrice);
+    const groupPnLValue = totals.totalValue - totals.totalInvestment;
+    const isProfit = groupPnL >= 0;
+
+    return (
+      <Box key={symbol} mb="sm">
+        <Box
+          className={classes.mobileRow}
+          onClick={() => toggleGroup(symbol)}
+          style={{ cursor: "pointer" }}
+        >
+          <div className={classes.mobileRowHeader}>
+            <Group spacing="xs">
+              <Text weight={600}>{symbol}</Text>
+              <Badge
+                color="blue"
+                variant="light"
+                leftSection={<IconInfoCircle size={12} />}
+                radius="sm"
+                size="xs"
+                style={{ height: 18 }}
+              >
+                {assets.length} {assets.length > 1 ? "HOLDINGS" : "HOLDING"}
+              </Badge>
+            </Group>
+            {isExpanded ? (
+              <IconChevronUp size={16} />
+            ) : (
+              <IconChevronDown size={16} />
+            )}
+          </div>
+
+          <div className={classes.mobileRowDetails}>
+            <div>
+              <Text className={classes.mobileLabel}>Total Value</Text>
+              <Text className={classes.mobileValue}>
+                {formatCurrency(totals.totalValue)}
+              </Text>
+            </div>
+
+            <div>
+              <Text className={classes.mobileLabel}>24h Change</Text>
+              {renderChangeIndicator(avgDailyChange)}
+            </div>
+
+            <div>
+              <Text className={classes.mobileLabel}>P&L</Text>
+              <div className={classes.mobilePnl}>
+                {isProfit ? (
+                  <IconTrendingUp size={14} className={classes.positivePnl} />
+                ) : (
+                  <IconTrendingDown size={14} className={classes.negativePnl} />
+                )}
+                <Text
+                  className={
+                    isProfit ? classes.positivePnl : classes.negativePnl
+                  }
+                >
+                  {groupPnL.toFixed(2)}% ({formatCurrency(groupPnLValue)})
+                </Text>
+              </div>
+            </div>
+          </div>
+        </Box>
+
+        <Collapse in={isExpanded}>
+          <Box pl="md">
+            {assets.map((asset) => renderMobileAssetRow(asset))}
+          </Box>
+
+          {canEdit && (
+            <Box p="sm" style={{ textAlign: "center" }}>
+              <Tooltip label="Add asset" withArrow>
+                <ActionIcon
+                  className={classes.addButton}
+                  size="sm"
+                  variant="subtle"
+                  color="green"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    router.push(
+                      `/portfolio/${portfolio._id}/repeatAsset?symbol=${symbol}`
+                    );
+                  }}
+                >
+                  <IconPlus size={16} strokeWidth={2.5} />
+                </ActionIcon>
+              </Tooltip>
+            </Box>
+          )}
+        </Collapse>
+      </Box>
+    );
+  };
+
+  return (
+    <>
+      {/* Desktop View */}
+      <MediaQuery smallerThan="sm" styles={{ display: "none" }}>
+        <Box className={classes.tableContainer}>
+          <LoadingOverlay visible={loading} overlayBlur={2} />
+
+          <Table
+            striped
+            highlightOnHover
+            withColumnBorders
+            sx={{
+              borderCollapse: "separate",
+              borderSpacing: 0,
+              tableLayout: "fixed",
+            }}
+          >
+            <thead className={classes.tableHeader}>
+              <tr>
+                <th style={{ width: "22%" }}>Security</th>
+                <th
+                  className={classes.mobileHidden}
+                  style={{ width: "10%", textAlign: "right" }}
+                >
+                  Quantity
+                </th>
+                <th
+                  className={classes.mobileHidden}
+                  style={{ width: "10%", textAlign: "right" }}
+                >
+                  Avg Price
+                </th>
+                <th
+                  className={classes.mobileHidden}
+                  style={{ width: "10%", textAlign: "right" }}
+                >
+                  LTP
+                </th>
+                <th style={{ width: "12%", textAlign: "right" }}>Value</th>
+                <th
+                  className={classes.dayChangeCell}
+                  style={{ textAlign: "right" }}
+                >
+                  24h Change
+                </th>
+                <th className={classes.pnlCell} style={{ textAlign: "right" }}>
+                  P&L
+                </th>
+                {canEdit && <th style={{ width: "8%" }}>Actions</th>}
+              </tr>
+            </thead>
+
+            <tbody>
+              {groupedAndSortedAssets.map((group) => {
+                const { symbol, assets, totals, avgDailyChange } = group;
+                const isExpanded = expandedGroups[symbol];
+                const avgPrice = totals.totalInvestment / totals.totalQuantity;
+                const currentPrice = totals.totalValue / totals.totalQuantity;
+                const groupPnL = calculatePnL(currentPrice, avgPrice);
+                const groupPnLValue =
+                  totals.totalValue - totals.totalInvestment;
+                const isProfit = groupPnL >= 0;
+
+                return (
+                  <React.Fragment key={symbol}>
+                    <tr
+                      className={`${classes.groupHeader} ${
+                        isExpanded ? classes.expanded : ""
+                      }`}
+                      onClick={() => toggleGroup(symbol)}
+                      aria-expanded={isExpanded}
+                    >
+                      <td className={classes.symbolCell}>
+                        <Group spacing={4} align="center" noWrap>
+                          <Text fw={600}>{symbol}</Text>
+                          <Badge
+                            color="blue"
+                            variant="light"
+                            leftSection={<IconInfoCircle size={12} />}
+                            radius="sm"
+                            size="xs"
+                            style={{ height: 18 }}
+                          >
+                            {assets.length}{" "}
+                            {assets.length > 1 ? "HOLDINGS" : "HOLDING"}
+                          </Badge>
+                          {isExpanded ? (
+                            <IconChevronUp size={16} />
+                          ) : (
+                            <IconChevronDown size={16} />
+                          )}
+                        </Group>
+                      </td>
+                      <td
+                        className={`${classes.quantityCell} ${classes.mobileHidden}`}
+                      >
+                        {formatQuantity(totals.totalQuantity)}
+                      </td>
+                      <td
+                        className={`${classes.priceCell} ${classes.mobileHidden}`}
+                      >
+                        {formatCurrency(avgPrice)}
+                      </td>
+                      <td
+                        className={`${classes.priceCell} ${classes.mobileHidden}`}
+                      >
+                        {formatCurrency(currentPrice)}
+                      </td>
+                      <td
+                        className={`${classes.priceCell} ${classes.valueCell}`}
+                      >
+                        {formatCurrency(totals.totalValue)}
+                      </td>
+                      <td className={classes.dayChangeCell}>
+                        {renderChangeIndicator(avgDailyChange)}
+                      </td>
+                      <td className={classes.pnlCell}>
+                        <Group spacing={4} position="right" noWrap>
+                          {isProfit ? (
+                            <IconTrendingUp
+                              size={16}
+                              className={classes.positivePnl}
+                            />
+                          ) : (
+                            <IconTrendingDown
+                              size={16}
+                              className={classes.negativePnl}
+                            />
+                          )}
+                          <Text
+                            className={
+                              isProfit
+                                ? classes.positivePnl
+                                : classes.negativePnl
+                            }
+                          >
+                            {groupPnL.toFixed(2)}%
+                          </Text>
+                          <Text
+                            size="xs"
+                            color="dimmed"
+                            className={classes.mobileHidden}
+                          >
+                            ({formatCurrency(groupPnLValue)})
+                          </Text>
+                        </Group>
+                      </td>
+                      {canEdit && (
+                        <td className={classes.actionCell}>
+                          <Tooltip label="Add asset" withArrow>
+                            <ActionIcon
+                              className={classes.addButton}
+                              size="sm"
+                              variant="subtle"
+                              color="green"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(
+                                  `/portfolio/${portfolio._id}/repeatAsset?symbol=${symbol}`
+                                );
+                              }}
+                            >
+                              <IconPlus size={16} strokeWidth={2.5} />
+                            </ActionIcon>
+                          </Tooltip>
+                        </td>
+                      )}
+                    </tr>
+
+                    <tr>
+                      <td colSpan={canEdit ? 8 : 7} style={{ padding: 0 }}>
+                        <Collapse in={isExpanded}>
+                          <Table striped highlightOnHover withColumnBorders>
+                            <tbody>
+                              {assets.map((asset) => {
+                                const assetValue =
+                                  asset.quantity * asset.currentPrice;
+                                const assetPnL = calculatePnL(
+                                  asset.currentPrice,
+                                  asset.averagePrice
+                                );
+                                const assetPnLValue =
+                                  (asset.currentPrice - asset.averagePrice) *
+                                  asset.quantity;
+                                const isAssetProfit = assetPnL >= 0;
+
+                                return (
+                                  <tr
+                                    key={asset._id}
+                                    className={classes.expandedRow}
+                                  >
+                                    <td style={{ paddingLeft: 40 }}>
+                                      <Group spacing="sm" noWrap>
+                                        <Text size="sm" color="dimmed">
+                                          {asset.symbol.split(".")[0]}
+                                        </Text>
+                                        {asset.exchange && (
+                                          <Badge
+                                            size="xs"
+                                            color="gray"
+                                            variant="outline"
+                                            className={classes.exchangeBadge}
+                                          >
+                                            {asset.exchange}
+                                          </Badge>
+                                        )}
+                                      </Group>
+                                    </td>
+                                    <td
+                                      className={`${classes.quantityCell} ${classes.mobileHidden}`}
+                                    >
+                                      {formatQuantity(asset.quantity)}
+                                    </td>
+                                    <td
+                                      className={`${classes.priceCell} ${classes.mobileHidden}`}
+                                    >
+                                      {formatCurrency(asset.averagePrice)}
+                                    </td>
+                                    <td
+                                      className={`${classes.priceCell} ${classes.mobileHidden}`}
+                                    >
+                                      {formatCurrency(asset.currentPrice)}
+                                    </td>
+                                    <td
+                                      className={`${classes.priceCell} ${classes.valueCell}`}
+                                    >
+                                      {formatCurrency(assetValue)}
+                                    </td>
+                                    <td className={classes.dayChangeCell}>
+                                      {renderChangeIndicator(asset.dailyChange)}
+                                    </td>
+                                    <td className={classes.pnlCell}>
+                                      <Group
+                                        spacing={4}
+                                        position="right"
+                                        noWrap
                                       >
-                                        {asset.exchange}
-                                      </Badge>
-                                    )}
-                                  </Group>
-                                </td>
-                                <td
-                                  className={`${classes.quantityCell} ${classes.mobileHidden}`}
-                                >
-                                  {formatQuantity(asset.quantity)}
-                                </td>
-                                <td
-                                  className={`${classes.priceCell} ${classes.mobileHidden}`}
-                                >
-                                  {formatCurrency(asset.averagePrice)}
-                                </td>
-                                <td
-                                  className={`${classes.priceCell} ${classes.mobileHidden}`}
-                                >
-                                  {formatCurrency(asset.currentPrice)}
-                                </td>
-                                <td
-                                  className={`${classes.priceCell} ${classes.valueCell}`}
-                                >
-                                  {formatCurrency(assetValue)}
-                                </td>
-                                <td className={classes.dayChangeCell}>
-                                  {renderChangeIndicator(asset.dailyChange)}
-                                </td>
-                                <td className={classes.pnlCell}>
-                                  <Group spacing={4} position="right" noWrap>
-                                    {isAssetProfit ? (
-                                      <IconTrendingUp
-                                        size={14}
-                                        className={classes.positivePnl}
-                                      />
-                                    ) : (
-                                      <IconTrendingDown
-                                        size={14}
-                                        className={classes.negativePnl}
-                                      />
-                                    )}
-                                    <Text
-                                      size="sm"
-                                      className={
-                                        isAssetProfit
-                                          ? classes.positivePnl
-                                          : classes.negativePnl
-                                      }
-                                    >
-                                      {assetPnL.toFixed(2)}%
-                                    </Text>
-                                    <Text
-                                      size="xs"
-                                      color="dimmed"
-                                      className={classes.mobileHidden}
-                                    >
-                                      ({formatCurrency(assetPnLValue)})
-                                    </Text>
-                                  </Group>
-                                </td>
-                                {canEdit && (
-                                  <td>
-                                    <Group position="right" spacing="xs">
-                                      <Tooltip label="Delete asset" withArrow>
-                                        <ActionIcon
+                                        {isAssetProfit ? (
+                                          <IconTrendingUp
+                                            size={14}
+                                            className={classes.positivePnl}
+                                          />
+                                        ) : (
+                                          <IconTrendingDown
+                                            size={14}
+                                            className={classes.negativePnl}
+                                          />
+                                        )}
+                                        <Text
                                           size="sm"
-                                          variant="subtle"
-                                          color="red"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleDelete(asset._id);
-                                          }}
-                                          loading={isDeleting === asset._id}
+                                          className={
+                                            isAssetProfit
+                                              ? classes.positivePnl
+                                              : classes.negativePnl
+                                          }
                                         >
-                                          <IconTrash size={16} />
-                                        </ActionIcon>
-                                      </Tooltip>
-                                    </Group>
-                                  </td>
-                                )}
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </Table>
-                    </Collapse>
-                  </td>
-                </tr>
-              </React.Fragment>
-            );
-          })}
-        </tbody>
-      </Table>
-    </Box>
+                                          {assetPnL.toFixed(2)}%
+                                        </Text>
+                                        <Text
+                                          size="xs"
+                                          color="dimmed"
+                                          className={classes.mobileHidden}
+                                        >
+                                          ({formatCurrency(assetPnLValue)})
+                                        </Text>
+                                      </Group>
+                                    </td>
+                                    {canEdit && (
+                                      <td>
+                                        <Group position="right" spacing="xs">
+                                          <Tooltip
+                                            label="Delete asset"
+                                            withArrow
+                                          >
+                                            <ActionIcon
+                                              size="sm"
+                                              variant="subtle"
+                                              color="red"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDelete(asset._id);
+                                              }}
+                                              loading={isDeleting === asset._id}
+                                            >
+                                              <IconTrash size={16} />
+                                            </ActionIcon>
+                                          </Tooltip>
+                                        </Group>
+                                      </td>
+                                    )}
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </Table>
+                        </Collapse>
+                      </td>
+                    </tr>
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </Table>
+        </Box>
+      </MediaQuery>
+
+      {/* Mobile View */}
+      <MediaQuery largerThan="sm" styles={{ display: "none" }}>
+        <Box>
+          <LoadingOverlay visible={loading} overlayBlur={2} />
+          {groupedAndSortedAssets.map(renderMobileGroup)}
+        </Box>
+      </MediaQuery>
+    </>
   );
 }
