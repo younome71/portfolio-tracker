@@ -125,8 +125,25 @@ export default function Home() {
     })
     .filter(Boolean);
 
-  // Sort by change
-  const sortedByDailyChange = [...assetsWithDailyChange].sort(
+  // Step 2: Group by symbol and aggregate
+  const groupedBySymbol = {};
+
+  for (const asset of assetsWithDailyChange) {
+    const symbol = asset.symbol;
+
+    if (!groupedBySymbol[symbol]) {
+      groupedBySymbol[symbol] = { ...asset };
+    } else {
+      // Aggregate quantities and values if needed
+      groupedBySymbol[symbol].quantity += asset.quantity || 0;
+      groupedBySymbol[symbol].value += asset.value || 0;
+      // Optionally, average the change or keep the most recent one
+      groupedBySymbol[symbol].change = asset.change; // or keep max/min/etc
+    }
+  }
+
+  // Step 3: Sort by change
+  const sortedByDailyChange = Object.values(groupedBySymbol).sort(
     (a, b) => b.change - a.change
   );
 
@@ -456,10 +473,7 @@ export default function Home() {
                         </Avatar>
                         <div>
                           <Text size="sm" weight={500}>
-                            {asset.name || asset.symbol}
-                          </Text>
-                          <Text size="xs" color="dimmed">
-                            {asset.symbol}
+                            {asset.name || asset.symbol.split(".")[0]}
                           </Text>
                         </div>
                       </Group>

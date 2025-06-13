@@ -15,8 +15,7 @@ import {
   useMantineTheme,
   createStyles,
   MediaQuery,
-  Progress,
-  Stack,
+  Modal,
 } from "@mantine/core";
 import {
   IconTrash,
@@ -30,6 +29,7 @@ import {
   IconArrowDownRight,
 } from "@tabler/icons-react";
 import React from "react";
+import AssetPerformanceChart from "./AssetPerformanceChart";
 
 const useStyles = createStyles((theme) => ({
   groupHeader: {
@@ -46,47 +46,39 @@ const useStyles = createStyles((theme) => ({
           : theme.colors.gray[1],
     },
   },
-
   expanded: {
     backgroundColor:
       theme.colorScheme === "dark"
         ? theme.colors.dark[5]
         : theme.colors.blue[0],
   },
-
   expandedRow: {
     backgroundColor:
       theme.colorScheme === "dark" ? theme.colors.dark[7] : theme.white,
     transition: "all 0.3s ease-in-out",
   },
-
   positivePnl: {
     color: theme.colors.green[6],
     fontWeight: 600,
     fontVariantNumeric: "tabular-nums",
   },
-
   negativePnl: {
     color: theme.colors.red[6],
     fontWeight: 600,
     fontVariantNumeric: "tabular-nums",
   },
-
   positiveChange: {
     color: theme.colors.green[6],
     fontWeight: 500,
   },
-
   negativeChange: {
     color: theme.colors.red[6],
     fontWeight: 500,
   },
-
   valueCell: {
     fontWeight: 500,
     textAlign: "right",
   },
-
   symbolCell: {
     minWidth: 120,
     fontWeight: 600,
@@ -94,7 +86,6 @@ const useStyles = createStyles((theme) => ({
     alignItems: "center",
     gap: theme.spacing.xs,
   },
-
   exchangeBadge: {
     textTransform: "uppercase",
     fontSize: 10,
@@ -104,53 +95,44 @@ const useStyles = createStyles((theme) => ({
         : theme.colors.gray[2],
     color: theme.colorScheme === "dark" ? theme.white : theme.black,
   },
-
   quantityCell: {
     textAlign: "right",
     whiteSpace: "nowrap",
   },
-
   priceCell: {
     textAlign: "right",
     whiteSpace: "nowrap",
   },
-
   pnlCell: {
     textAlign: "right",
     minWidth: 120,
     whiteSpace: "nowrap",
   },
-
   dayChangeCell: {
     textAlign: "right",
     minWidth: 100,
     whiteSpace: "nowrap",
   },
-
   mobileHidden: {
     [theme.fn.smallerThan("sm")]: {
       display: "none",
     },
   },
-
   mobileVisible: {
     [theme.fn.largerThan("sm")]: {
       display: "none",
     },
   },
-
   compactCell: {
     padding: "4px 8px !important",
     fontSize: theme.fontSizes.xs,
   },
-
   actionCell: {
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
     height: "100%",
   },
-
   addButton: {
     backgroundColor: theme.colors.green[0],
     borderRadius: theme.radius.sm,
@@ -163,7 +145,18 @@ const useStyles = createStyles((theme) => ({
       backgroundColor: theme.colors.green[1],
     },
   },
-
+  performanceButton: {
+    backgroundColor: theme.colors.blue[0],
+    borderRadius: theme.radius.sm,
+    width: 24,
+    height: 24,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    "&:hover": {
+      backgroundColor: theme.colors.blue[1],
+    },
+  },
   tableHeader: {
     position: "sticky",
     top: 0,
@@ -183,7 +176,6 @@ const useStyles = createStyles((theme) => ({
       }`,
     },
   },
-
   tableContainer: {
     maxHeight: "calc(100vh - 200px)",
     overflowY: "auto",
@@ -197,8 +189,6 @@ const useStyles = createStyles((theme) => ({
       borderRadius: 0,
     },
   },
-
-  // Mobile specific styles
   mobileRow: {
     display: "flex",
     flexDirection: "column",
@@ -207,20 +197,17 @@ const useStyles = createStyles((theme) => ({
       theme.colorScheme === "dark" ? theme.colors.dark[4] : theme.colors.gray[2]
     }`,
   },
-
   mobileRowHeader: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: theme.spacing.xs,
   },
-
   mobileRowDetails: {
     display: "grid",
     gridTemplateColumns: "repeat(2, 1fr)",
     gap: theme.spacing.sm,
   },
-
   mobileLabel: {
     fontSize: theme.fontSizes.xs,
     color:
@@ -229,12 +216,10 @@ const useStyles = createStyles((theme) => ({
         : theme.colors.gray[6],
     marginBottom: 2,
   },
-
   mobileValue: {
     fontSize: theme.fontSizes.sm,
     fontWeight: 500,
   },
-
   mobilePnl: {
     display: "flex",
     alignItems: "center",
@@ -251,6 +236,8 @@ export default function AssetTable({ portfolio, canEdit = true }) {
   const [expandedGroups, setExpandedGroups] = useState({});
   const [loading, setLoading] = useState(false);
   const [stockNames, setStockNames] = useState({});
+  const [selectedAsset, setSelectedAsset] = useState(null);
+  const [showPerformanceModal, setShowPerformanceModal] = useState(false);
 
   useEffect(() => {
     const loadStockNames = async () => {
@@ -414,6 +401,12 @@ export default function AssetTable({ portfolio, canEdit = true }) {
     );
   };
 
+  const handleViewPerformance = (symbol) => {
+    setSelectedAsset(symbol+'.BSE');
+    console.log(symbol);
+    setShowPerformanceModal(true);
+  };
+
   const renderMobileAssetRow = (asset) => {
     const assetValue = asset.quantity * asset.currentPrice;
     const assetPnL = calculatePnL(asset.currentPrice, asset.averagePrice);
@@ -530,11 +523,25 @@ export default function AssetTable({ portfolio, canEdit = true }) {
                 {assets.length} {assets.length > 1 ? "HOLDINGS" : "HOLDING"}
               </Badge>
             </Group>
-            {isExpanded ? (
-              <IconChevronUp size={16} />
-            ) : (
-              <IconChevronDown size={16} />
-            )}
+            <Group spacing={4}>
+              <ActionIcon
+                size="sm"
+                variant="subtle"
+                color="blue"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleViewPerformance(symbol + ".BSE");
+                }}
+                className={classes.performanceButton}
+              >
+                <IconTrendingUp size={16} />
+              </ActionIcon>
+              {isExpanded ? (
+                <IconChevronUp size={16} />
+              ) : (
+                <IconChevronDown size={16} />
+              )}
+            </Group>
           </div>
 
           <div className={classes.mobileRowDetails}>
@@ -749,22 +756,38 @@ export default function AssetTable({ portfolio, canEdit = true }) {
                       </td>
                       {canEdit && (
                         <td className={classes.actionCell}>
-                          <Tooltip label="Add asset" withArrow>
-                            <ActionIcon
-                              className={classes.addButton}
-                              size="sm"
-                              variant="subtle"
-                              color="green"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                router.push(
-                                  `/portfolio/${portfolio._id}/repeatAsset?symbol=${symbol}`
-                                );
-                              }}
-                            >
-                              <IconPlus size={16} strokeWidth={2.5} />
-                            </ActionIcon>
-                          </Tooltip>
+                          <Group spacing={4}>
+                            <Tooltip label="View Performance" withArrow>
+                              <ActionIcon
+                                size="sm"
+                                variant="subtle"
+                                color="blue"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleViewPerformance(symbol);
+                                }}
+                                className={classes.performanceButton}
+                              >
+                                <IconTrendingUp size={16} />
+                              </ActionIcon>
+                            </Tooltip>
+                            <Tooltip label="Add asset" withArrow>
+                              <ActionIcon
+                                className={classes.addButton}
+                                size="sm"
+                                variant="subtle"
+                                color="green"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  router.push(
+                                    `/portfolio/${portfolio._id}/repeatAsset?symbol=${symbol}`
+                                  );
+                                }}
+                              >
+                                <IconPlus size={16} strokeWidth={2.5} />
+                              </ActionIcon>
+                            </Tooltip>
+                          </Group>
                         </td>
                       )}
                     </tr>
@@ -913,6 +936,28 @@ export default function AssetTable({ portfolio, canEdit = true }) {
           {groupedAndSortedAssets.map(renderMobileGroup)}
         </Box>
       </MediaQuery>
+
+      {/* Performance Modal */}
+      <Modal
+        opened={showPerformanceModal}
+        onClose={() => setShowPerformanceModal(false)}
+        title={`${selectedAsset ? selectedAsset.split(".")[0] : ''} Performance`}
+        size="xl"
+        overlayProps={{ blur: 3 }}
+        styles={(theme) => ({
+          title: {
+            fontSize: theme.fontSizes.xl,
+            fontWeight: 600,
+          },
+        })}
+      >
+        {selectedAsset && (
+          <AssetPerformanceChart
+            portfolio={portfolio}
+            assetSymbol={selectedAsset}
+          />
+        )}
+      </Modal>
     </>
   );
 }

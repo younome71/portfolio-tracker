@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useRouter } from "next/router";
 import {
@@ -16,16 +16,19 @@ import {
   Stack,
   Center,
   SimpleGrid,
+  Modal,
 } from "@mantine/core";
 import {
   IconAlertCircle,
   IconPlus,
   IconChartLine,
   IconArrowLeft,
+  IconTrendingUp,
 } from "@tabler/icons-react";
 import Layout from "../../components/Layout";
 import AssetTable from "../../components/AssetTable";
 import PerformanceChart from "../../components/PerformanceChart";
+import AssetPerformanceChart from "../../components/AssetPerformanceChart";
 import IndividualPortfolioSummary from "@/components/IndividualPortfolioSummary";
 import { fetchPortfolioDetails } from "../../store/portfolioSlice";
 
@@ -38,6 +41,8 @@ export default function PortfolioDetail() {
   const { currentPortfolio, loading, error } = useSelector(
     (state) => state.portfolio
   );
+  const [selectedAsset, setSelectedAsset] = useState(null);
+  const [showAssetPerformance, setShowAssetPerformance] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -46,6 +51,16 @@ export default function PortfolioDetail() {
       dispatch(fetchPortfolioDetails(id));
     }
   }, [isAuthenticated, id, dispatch, router]);
+
+  const getBaseSymbol = (symbol) => {
+    if (!symbol) return "";
+    return symbol.split(".")[0];
+  };
+
+  const handleViewAssetPerformance = (symbol) => {
+    setSelectedAsset(symbol);
+    setShowAssetPerformance(true);
+  };
 
   if (!isAuthenticated || loading) {
     return (
@@ -117,18 +132,17 @@ export default function PortfolioDetail() {
             </Group>
           </Group>
 
-          {/* Add the PortfolioSummary component here */}
           <IndividualPortfolioSummary
             title="Portfolio Snapshot"
-            portfolios={[currentPortfolio]} // Wrap currentPortfolio in an array
-            isFamily={false} // Adjust based on your needs
+            portfolios={[currentPortfolio]}
+            isFamily={false}
           />
 
           <Card withBorder shadow="sm" radius="md">
             <Card.Section withBorder inheritPadding py="xs">
               <Group spacing="xs">
                 <IconChartLine size={18} />
-                <Text weight={500}>Performance Overview</Text>
+                <Text weight={500}>Portfolio Performance</Text>
               </Group>
             </Card.Section>
             <Card.Section p="md">
@@ -152,10 +166,53 @@ export default function PortfolioDetail() {
             </Card.Section>
 
             <Card.Section p="md">
-              <AssetTable portfolio={currentPortfolio} />
+              <AssetTable
+                portfolio={currentPortfolio}
+                onViewPerformance={handleViewAssetPerformance}
+              />
             </Card.Section>
           </Card>
         </Stack>
+
+        {/* Asset Performance Modal */}
+        <Modal
+          opened={showAssetPerformance}
+          onClose={() => setShowAssetPerformance(false)}
+          title={
+            <Group spacing="xs">
+              <IconTrendingUp size={20} />
+              <Text size="xl" weight={600}>
+                {selectedAsset ? selectedAsset.split('.')[0] : ''} Hi
+              </Text>
+            </Group>
+          }
+          size="xl"
+          overlayProps={{ blur: 3 }}
+          styles={(theme) => ({
+            title: {
+              fontSize: theme.fontSizes.xl,
+              fontWeight: 600,
+            },
+            header: {
+              padding: theme.spacing.md,
+              borderBottom: `1px solid ${
+                theme.colorScheme === "dark"
+                  ? theme.colors.dark[5]
+                  : theme.colors.gray[2]
+              }`,
+            },
+            body: {
+              padding: 0,
+            },
+          })}
+        >
+          {selectedAsset && (
+            <AssetPerformanceChart
+              portfolio={currentPortfolio}
+              assetSymbol={selectedAsset}
+            />
+          )}
+        </Modal>
       </Container>
     </Layout>
   );

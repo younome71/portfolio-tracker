@@ -17,6 +17,8 @@ import {
   Button,
   Grid,
   Center,
+  MediaQuery,
+  ScrollArea,
 } from "@mantine/core";
 import {
   IconPigMoney,
@@ -105,19 +107,14 @@ function CombinedPortfolio() {
     setActiveIndexCurrent(index === activeIndexCurrent ? null : index);
   };
 
-  // Generate a consistent color from string (basic hash function)
   const generateColorFromString = (str) => {
-    // Simple DJB2 hash
     let hash = 5381;
     for (let i = 0; i < str.length; i++) {
       hash = (hash * 33) ^ str.charCodeAt(i);
     }
-
-    // Normalize and extract components
     const hue = Math.abs(hash) % 360;
-    const saturation = 60 + (Math.abs(hash) % 20); // 60–79%
-    const lightness = 45 + (Math.abs(hash >> 3) % 10); // 45–54%
-
+    const saturation = 60 + (Math.abs(hash) % 20);
+    const lightness = 45 + (Math.abs(hash >> 3) % 10);
     return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
   };
 
@@ -136,7 +133,6 @@ function CombinedPortfolio() {
         ...(portfolios.familyPortfolios || []),
       ];
 
-      // Combine assets with the same symbol
       const assetMap = new Map();
 
       allPortfolios.forEach((portfolio) => {
@@ -154,11 +150,11 @@ function CombinedPortfolio() {
               quantity: totalQuantity,
               invested: totalInvested,
               currentValue: totalQuantity * asset.currentPrice,
-              averagePrice: totalInvested / totalQuantity, // Weighted average
+              averagePrice: totalInvested / totalQuantity,
             });
           } else {
             assetMap.set(asset.symbol, {
-              name: asset.symbol.split(".")[0], // Remove exchange suffix
+              name: asset.symbol.split(".")[0],
               symbol: asset.symbol,
               quantity: asset.quantity,
               averagePrice: asset.averagePrice,
@@ -170,7 +166,6 @@ function CombinedPortfolio() {
         });
       });
 
-      // Convert map to array and calculate derived values
       const combined = Array.from(assetMap.values())
         .map((asset) => ({
           ...asset,
@@ -180,7 +175,7 @@ function CombinedPortfolio() {
               ? ((asset.currentValue - asset.invested) / asset.invested) * 100
               : 0,
         }))
-        .sort((a, b) => b.currentValue - a.currentValue); // Sort by currentValue descending
+        .sort((a, b) => b.currentValue - a.currentValue);
 
       setCombinedAssets(combined);
     }
@@ -220,16 +215,21 @@ function CombinedPortfolio() {
 
   return (
     <Layout>
-      <Container size="xl" py="md">
-        <Group position="apart" mb="xl">
-          <Title order={2}>Combined Portfolio</Title>
+      <Container size="xl" py="md" px="sm">
+        <Group position="apart" mb="xl" noWrap>
+          <MediaQuery smallerThan="sm" styles={{ fontSize: '1.5rem' }}>
+            <Title order={2}>Combined Portfolio</Title>
+          </MediaQuery>
           <Button
             leftIcon={<IconArrowLeft size={16} />}
             onClick={() => router.push("/")}
             variant="outline"
             size="md"
+            compact={window.innerWidth < 400}
           >
-            Back
+            <MediaQuery smallerThan="xs" styles={{ display: 'none' }}>
+              <span>Back</span>
+            </MediaQuery>
           </Button>
         </Group>
 
@@ -242,7 +242,10 @@ function CombinedPortfolio() {
         {/* Summary Cards */}
         <SimpleGrid
           cols={3}
-          breakpoints={[{ maxWidth: "sm", cols: 1 }]}
+          breakpoints={[
+            { maxWidth: 'md', cols: 2 },
+            { maxWidth: 'sm', cols: 1 }
+          ]}
           mb="xl"
         >
           <Paper withBorder p="md" radius="md">
@@ -317,7 +320,7 @@ function CombinedPortfolio() {
             <Text weight={600}>Asset Allocation</Text>
           </Card.Section>
           <Grid gutter="xl">
-            <Grid.Col md={6}>
+            <Grid.Col sm={12} md={6}>
               <Center>
                 <Text weight={500} mb="sm">
                   Invested Amount
@@ -331,8 +334,8 @@ function CombinedPortfolio() {
                     nameKey="name"
                     cx="50%"
                     cy="50%"
-                    outerRadius={100}
-                    innerRadius={60}
+                    outerRadius={window.innerWidth < 768 ? 80 : 100}
+                    innerRadius={window.innerWidth < 768 ? 40 : 60}
                     activeIndex={activeIndexInvested}
                     activeShape={renderActiveShape}
                     onClick={handleClickInvested}
@@ -344,10 +347,21 @@ function CombinedPortfolio() {
                   <Tooltip
                     formatter={(value) => `₹${value.toLocaleString("en-IN")}`}
                   />
+                  <MediaQuery largerThan="sm" styles={{ display: 'block' }}>
+                    <Legend 
+                      layout="vertical" 
+                      verticalAlign="middle" 
+                      align="right"
+                      wrapperStyle={{
+                        paddingLeft: '10px',
+                        fontSize: window.innerWidth < 768 ? '12px' : '14px'
+                      }}
+                    />
+                  </MediaQuery>
                 </PieChart>
               </ResponsiveContainer>
             </Grid.Col>
-            <Grid.Col md={6}>
+            <Grid.Col sm={12} md={6}>
               <Center>
                 <Text weight={500} mb="sm">
                   Current Value
@@ -361,8 +375,8 @@ function CombinedPortfolio() {
                     nameKey="name"
                     cx="50%"
                     cy="50%"
-                    outerRadius={100}
-                    innerRadius={60}
+                    outerRadius={window.innerWidth < 768 ? 80 : 100}
+                    innerRadius={window.innerWidth < 768 ? 40 : 60}
                     activeIndex={activeIndexCurrent}
                     activeShape={renderActiveShape}
                     onClick={handleClickCurrent}
@@ -374,6 +388,17 @@ function CombinedPortfolio() {
                   <Tooltip
                     formatter={(value) => `₹${value.toLocaleString("en-IN")}`}
                   />
+                  <MediaQuery largerThan="sm" styles={{ display: 'block' }}>
+                    <Legend 
+                      layout="vertical" 
+                      verticalAlign="middle" 
+                      align="right"
+                      wrapperStyle={{
+                        paddingLeft: '10px',
+                        fontSize: window.innerWidth < 768 ? '12px' : '14px'
+                      }}
+                    />
+                  </MediaQuery>
                 </PieChart>
               </ResponsiveContainer>
             </Grid.Col>
@@ -386,54 +411,80 @@ function CombinedPortfolio() {
             <Text weight={600}>All Assets ({combinedAssets.length})</Text>
           </Card.Section>
 
-          <Table verticalSpacing="sm" mt="md">
-            <thead>
-              <tr>
-                <th>Asset</th>
-                <th>Quantity</th>
-                <th>Avg. Price</th>
-                <th>Current Price</th>
-                <th>Invested</th>
-                <th>Current Value</th>
-                <th>Profit/Loss</th>
-              </tr>
-            </thead>
-            <tbody>
-              {combinedAssets.map((asset) => (
-                <tr key={asset.symbol}>
-                  <td>
-                    <Group spacing="sm">
-                      <Avatar size={30} radius={30}>
-                        {asset.symbol.substring(0, 2)}
-                      </Avatar>
-                      <div>
-                        <Text size="sm" weight={500}>
-                          {asset.name}
-                        </Text>
-                      </div>
-                    </Group>
-                  </td>
-                  <td>{asset.quantity.toFixed(2)}</td>
-                  <td>₹{asset.averagePrice.toFixed(2)}</td>
-                  <td>₹{asset.currentPrice.toFixed(2)}</td>
-                  <td>₹{asset.invested.toFixed(2)}</td>
-                  <td>₹{asset.currentValue.toFixed(2)}</td>
-                  <td>
-                    <Text color={asset.profit >= 0 ? "green" : "red"}>
-                      ₹{Math.abs(asset.profit).toFixed(2)} (
-                      {asset.profitPercentage.toFixed(2)}%)
-                    </Text>
-                    <Progress
-                      value={Math.abs(asset.profitPercentage)}
-                      color={asset.profit >= 0 ? "green" : "red"}
-                      size="sm"
-                      mt={5}
-                    />
-                  </td>
+          <ScrollArea type="auto" offsetScrollbars>
+            <Table verticalSpacing="sm" mt="md" sx={{ minWidth: 700 }}>
+              <thead>
+                <tr>
+                  <th>Asset</th>
+                  <MediaQuery smallerThan="md" styles={{ display: 'none' }}>
+                    <th>Quantity</th>
+                  </MediaQuery>
+                  <MediaQuery smallerThan="lg" styles={{ display: 'none' }}>
+                    <th>Avg. Price</th>
+                  </MediaQuery>
+                  <th>Current Price</th>
+                  <th>Invested</th>
+                  <th>Current Value</th>
+                  <th>P/L</th>
                 </tr>
-              ))}
-            </tbody>
-          </Table>
+              </thead>
+              <tbody>
+                {combinedAssets.map((asset) => (
+                  <tr key={asset.symbol}>
+                    <td>
+                      <Group spacing="sm" noWrap>
+                        <Avatar size={30} radius={30}>
+                          {asset.symbol.substring(0, 2)}
+                        </Avatar>
+                        <div>
+                          <Text size="sm" weight={500} lineClamp={1}>
+                            {asset.name}
+                          </Text>
+                          <MediaQuery largerThan="md" styles={{ display: 'none' }}>
+                            <Text size="xs" color="dimmed">
+                              Qty: {asset.quantity.toFixed(2)}
+                            </Text>
+                          </MediaQuery>
+                        </div>
+                      </Group>
+                    </td>
+                    <MediaQuery smallerThan="md" styles={{ display: 'none' }}>
+                      <td>{asset.quantity.toFixed(2)}</td>
+                    </MediaQuery>
+                    <MediaQuery smallerThan="lg" styles={{ display: 'none' }}>
+                      <td>₹{asset.averagePrice.toFixed(2)}</td>
+                    </MediaQuery>
+                    <td>₹{asset.currentPrice.toFixed(2)}</td>
+                    <td>₹{asset.invested.toFixed(2)}</td>
+                    <td>₹{asset.currentValue.toFixed(2)}</td>
+                    <td>
+                      <Text color={asset.profit >= 0 ? "green" : "red"}>
+                        ₹{Math.abs(asset.profit).toFixed(2)}
+                        <MediaQuery smallerThan="sm" styles={{ display: 'none' }}>
+                          <Text 
+                            component="span" 
+                            ml={4} 
+                            size="xs" 
+                            color={asset.profit >= 0 ? "green" : "red"}
+                          >
+                            ({asset.profitPercentage.toFixed(2)}%)
+                          </Text>
+                        </MediaQuery>
+                      </Text>
+                      <MediaQuery smallerThan="sm" styles={{ display: 'none' }}>
+                        <Progress
+                          value={Math.abs(asset.profitPercentage)}
+                          color={asset.profit >= 0 ? "green" : "red"}
+                          size="sm"
+                          mt={5}
+                        />
+                      </MediaQuery>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </ScrollArea>
         </Card>
       </Container>
     </Layout>
