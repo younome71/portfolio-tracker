@@ -17,6 +17,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+app.get('/', (req, res) => {
+  res.send('Portfolio Tracker backend is awake!');
+});
+
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/portfolio', portfolioRoutes);
