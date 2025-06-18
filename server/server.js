@@ -21,6 +21,17 @@ app.get('/', (req, res) => {
   res.send('Portfolio Tracker backend is awake!');
 });
 
+app.get('/api/manual-update', async (req, res) => {
+  try {
+    await updateStockPrices();
+    res.status(200).send('Stock update completed.');
+  } catch (error) {
+    console.error('Stock update failed:', error);
+    res.status(500).send('Stock update failed.');
+  }
+});
+
+
 
 // Routes
 app.use('/api/auth', authRoutes);
