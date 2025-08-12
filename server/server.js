@@ -17,21 +17,33 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.get('/', (req, res) => {
-  res.send('Portfolio Tracker backend is awake!');
-});
-
-app.get('/api/manual-update', async (req, res) => {
+app.get('/', async (req, res) => {
   try {
-    await updateStockPrices();
-    res.status(200).send('Stock update completed.');
+    const now = new Date();
+    
+    // Convert to IST
+    const istTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+    const hours = istTime.getHours();
+    const minutes = istTime.getMinutes();
+
+    let updateMessage = 'No update this time';
+
+    // Market hours: 09:15 - 15:30 IST
+    const marketOpen = (hours > 9 || (hours === 9 && minutes >= 15));
+    const marketClose = (hours < 15 || (hours === 15 && minutes <= 30));
+
+    if (minutes === 0 && marketOpen && marketClose) {
+      await updateStockPrices();
+      updateMessage = 'Stock update completed.';
+      console.log(`Stock update triggered at ${istTime.toLocaleTimeString('en-IN', { hour12: false })} IST`);
+    }
+
+    res.status(200).send(`Portfolio Tracker backend is awake! ${updateMessage}`);
   } catch (error) {
     console.error('Stock update failed:', error);
-    res.status(500).send('Stock update failed.');
+    res.status(500).send('Backend awake but stock update failed.');
   }
 });
-
-
 
 // Routes
 app.use('/api/auth', authRoutes);
