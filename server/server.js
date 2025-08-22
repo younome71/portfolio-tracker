@@ -32,11 +32,12 @@ app.get('/', async (req, res) => {
     const marketOpen = (hours > 9 || (hours === 9 && minutes >= 15));
     const marketClose = (hours < 15 || (hours === 15 && minutes <= 30));
 
-    if (minutes === 0 && marketOpen && marketClose) {
+    if ((minutes === 0 || (hours === 15 && minutes === 30)) && marketOpen && marketClose) {
       await updateStockPrices();
       updateMessage = 'Stock update completed.';
       console.log(`Stock update triggered at ${istTime.toLocaleTimeString('en-IN', { hour12: false })} IST`);
     }
+
 
     res.status(200).send(`Portfolio Tracker backend is awake! ${updateMessage}`);
   } catch (error) {
