@@ -7,13 +7,23 @@ const userController = require('../controllers/userController');
 router.get('/family', auth, isParent, userController.getFamilyMembers);
 
 router.post(
-  '/family',
+  '/family/invites',
   auth,
   isParent,
   validateFamilyMember,
   handleValidationErrors,
-  userController.addFamilyMember
+  userController.createFamilyInvite
 );
+
+router.get('/family/invites/sent', auth, isParent, userController.getSentInvites);
+
+router.get('/family/invites/received', auth, userController.getReceivedInvites);
+
+router.post('/family/invites/:id/accept', auth, userController.acceptFamilyInvite);
+
+router.post('/family/invites/:id/decline', auth, userController.declineFamilyInvite);
+
+router.delete('/family/invites/:id', auth, isParent, userController.cancelFamilyInvite);
 
 router.delete('/family/:id', auth, isParent, userController.removeFamilyMember);
 
