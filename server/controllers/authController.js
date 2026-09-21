@@ -22,8 +22,12 @@ exports.register = async (req, res) => {
   try {
     const existing = await User.findOne({ email });
     if (existing) {
-      // Avoid user enumeration: same message style as login failure
-      return sendError(res, 400, 'REGISTRATION_FAILED', 'Unable to register with these credentials');
+      return sendError(
+        res,
+        400,
+        'EMAIL_IN_USE',
+        'An account with this email already exists. Try signing in instead.'
+      );
     }
 
     const user = new User({

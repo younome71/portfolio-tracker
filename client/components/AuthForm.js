@@ -127,7 +127,7 @@ export default function AuthForm({ isLogin = true }) {
       {error && (
         <Alert
           icon={<IconAlertCircle size="1rem" />}
-          title="Unable to continue"
+          title={isLogin ? 'Sign in failed' : 'Registration failed'}
           color="red"
           mb="md"
           variant="light"

@@ -8,8 +8,18 @@ const api = axios.create({
 });
 
 export function getApiErrorMessage(error, fallback = 'Request failed') {
+  const apiError = error.response?.data?.error;
+  const validationErrors = apiError?.details?.errors;
+
+  if (Array.isArray(validationErrors) && validationErrors.length > 0) {
+    return validationErrors
+      .map((item) => item.msg || item.message)
+      .filter(Boolean)
+      .join('. ');
+  }
+
   return (
-    error.response?.data?.error?.message ||
+    apiError?.message ||
     error.response?.data?.msg ||
     error.response?.data?.message ||
     error.message ||
