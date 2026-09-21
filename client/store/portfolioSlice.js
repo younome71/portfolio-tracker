@@ -1,14 +1,14 @@
 ﻿import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import api from '../utils/api';
+import api, { getApiErrorMessage } from '../utils/api';
 
 export const fetchPortfolios = createAsyncThunk(
   'portfolio/fetchPortfolios',
   async (_, { rejectWithValue }) => {
     try {
       const response = await api.get('/portfolio');
-      return response.data;
+      return response.data.data;
     } catch (err) {
-      return rejectWithValue(err.response?.data?.message || 'Failed to fetch portfolios');
+      return rejectWithValue(getApiErrorMessage(err, 'Failed to fetch portfolios'));
     }
   }
 );
@@ -18,9 +18,11 @@ export const fetchPortfolioDetails = createAsyncThunk(
   async (portfolioId, { rejectWithValue }) => {
     try {
       const response = await api.get(`/portfolio/${portfolioId}/performance`);
-      return response.data;
+      return response.data.data;
     } catch (err) {
-      return rejectWithValue(err.response?.data?.message || 'Failed to fetch portfolio details');
+      return rejectWithValue(
+        getApiErrorMessage(err, 'Failed to fetch portfolio details')
+      );
     }
   }
 );
@@ -30,9 +32,9 @@ export const createPortfolio = createAsyncThunk(
   async (portfolioData, { rejectWithValue }) => {
     try {
       const response = await api.post('/portfolio', portfolioData);
-      return response.data;
+      return response.data.data;
     } catch (err) {
-      return rejectWithValue(err.response?.data?.message || 'Failed to create portfolio');
+      return rejectWithValue(getApiErrorMessage(err, 'Failed to create portfolio'));
     }
   }
 );
@@ -41,10 +43,10 @@ export const updatePortfolio = createAsyncThunk(
   'portfolio/updatePortfolio',
   async ({ portfolioId, ...portfolioData }, { rejectWithValue }) => {
     try {
-      const response = await api.put(`/portfolio/${portfolioId}`, portfolioData);
-      return response.data;
+      const response = await api.patch(`/portfolio/${portfolioId}`, portfolioData);
+      return response.data.data;
     } catch (err) {
-      return rejectWithValue(err.response?.data?.message || 'Failed to update portfolio');
+      return rejectWithValue(getApiErrorMessage(err, 'Failed to update portfolio'));
     }
   }
 );
@@ -54,9 +56,21 @@ export const addAsset = createAsyncThunk(
   async ({ portfolioId, assetData }, { rejectWithValue }) => {
     try {
       const response = await api.post(`/portfolio/${portfolioId}/assets`, assetData);
-      return response.data;
+      return response.data.data;
     } catch (err) {
-      return rejectWithValue(err.response?.data?.message || 'Failed to add asset');
+      return rejectWithValue(getApiErrorMessage(err, 'Failed to add asset'));
+    }
+  }
+);
+
+export const sellAsset = createAsyncThunk(
+  'portfolio/sellAsset',
+  async ({ portfolioId, sellData }, { rejectWithValue }) => {
+    try {
+      const response = await api.post(`/portfolio/${portfolioId}/sell`, sellData);
+      return response.data.data;
+    } catch (err) {
+      return rejectWithValue(getApiErrorMessage(err, 'Failed to sell asset'));
     }
   }
 );
@@ -68,7 +82,7 @@ export const removeAsset = createAsyncThunk(
       await api.delete(`/portfolio/${portfolioId}/assets/${assetId}`);
       return { portfolioId, assetId };
     } catch (err) {
-      return rejectWithValue(err.response?.data?.message || 'Failed to remove asset');
+      return rejectWithValue(getApiErrorMessage(err, 'Failed to remove asset'));
     }
   }
 );
@@ -78,34 +92,34 @@ const portfolioSlice = createSlice({
   initialState: {
     portfolios: {
       ownPortfolios: [],
-      familyPortfolios: []
+      familyPortfolios: [],
     },
     currentPortfolio: null,
     loading: false,
-    error: null
+    error: null,
   },
   reducers: {
     clearPortfolioError: (state) => {
       state.error = null;
-    }
+    },
   },
   extraReducers: (builder) => {
     builder
-      // Fetch portfolios
       .addCase(fetchPortfolios.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
       .addCase(fetchPortfolios.fulfilled, (state, action) => {
         state.loading = false;
-        state.portfolios = action.payload;
+        state.portfolios = action.payload || {
+          ownPortfolios: [],
+          familyPortfolios: [],
+        };
       })
       .addCase(fetchPortfolios.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       })
-      
-      // Fetch portfolio details
       .addCase(fetchPortfolioDetails.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -118,8 +132,6 @@ const portfolioSlice = createSlice({
         state.loading = false;
         state.error = action.payload;
       })
-      
-      // Create portfolio
       .addCase(createPortfolio.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -136,31 +148,59 @@ const portfolioSlice = createSlice({
         state.loading = false;
         state.error = action.payload;
       })
-      
-      // Add asset
+      .addCase(updatePortfolio.fulfilled, (state, action) => {
+        state.loading = false;
+        const updated = action.payload;
+        const ownIdx = state.portfolios.ownPortfolios.findIndex(
+          (p) => p._id === updated._id
+        );
+        const famIdx = state.portfolios.familyPortfolios.findIndex(
+          (p) => p._id === updated._id
+        );
+        if (ownIdx >= 0) state.portfolios.ownPortfolios[ownIdx] = updated;
+        if (famIdx >= 0) state.portfolios.familyPortfolios[famIdx] = updated;
+        if (state.currentPortfolio?._id === updated._id) {
+          state.currentPortfolio = {
+            ...state.currentPortfolio,
+            ...updated,
+            name: updated.name,
+          };
+        }
+      })
       .addCase(addAsset.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
       .addCase(addAsset.fulfilled, (state, action) => {
         state.loading = false;
+        // Raw portfolio doc from add — refresh details preferred; store interim
         state.currentPortfolio = action.payload;
       })
       .addCase(addAsset.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       })
-      
-      // Remove asset
+      .addCase(sellAsset.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(sellAsset.fulfilled, (state, action) => {
+        state.loading = false;
+        state.currentPortfolio = action.payload;
+      })
+      .addCase(sellAsset.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
       .addCase(removeAsset.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
       .addCase(removeAsset.fulfilled, (state, action) => {
         state.loading = false;
-        if (state.currentPortfolio?._id === action.payload.portfolioId) {
+        if (state.currentPortfolio?.assets) {
           state.currentPortfolio.assets = state.currentPortfolio.assets.filter(
-            asset => asset._id !== action.payload.assetId
+            (asset) => asset._id !== action.payload.assetId
           );
         }
       })
@@ -168,7 +208,7 @@ const portfolioSlice = createSlice({
         state.loading = false;
         state.error = action.payload;
       });
-  }
+  },
 });
 
 export const { clearPortfolioError } = portfolioSlice.actions;

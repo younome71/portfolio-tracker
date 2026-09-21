@@ -1,190 +1,329 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useRouter } from "next/router";
 import {
   Container,
-  Title,
   Text,
-  Table,
-  Group,
-  Avatar,
-  Card,
-  Progress,
   Alert,
-  Paper,
   LoadingOverlay,
-  SimpleGrid,
   Button,
-  Grid,
-  Center,
-  MediaQuery,
-  ScrollArea,
 } from "@mantine/core";
-import {
-  IconPigMoney,
-  IconCoin,
-  IconTrendingUp,
-  IconTrendingDown,
-  IconArrowLeft,
-} from "@tabler/icons-react";
+import { useMediaQuery } from "@mantine/hooks";
+import { IconArrowLeft } from "@tabler/icons-react";
 import {
   PieChart,
   Pie,
   Cell,
   Tooltip,
-  Legend,
   ResponsiveContainer,
   Sector,
 } from "recharts";
 import Layout from "../components/Layout";
 import { fetchPortfolios } from "../store/portfolioSlice";
+import { calculateNetInvested, ALLOC_PALETTE } from "../utils/portfolioMath";
+
+function formatINR(value, digits = 2) {
+  return `₹${Number(value || 0).toLocaleString("en-IN", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })}`;
+}
+
+function formatCompactINR(value) {
+  const n = Number(value) || 0;
+  if (n >= 1e7) return `₹${(n / 1e7).toFixed(2)} Cr`;
+  if (n >= 1e5) return `₹${(n / 1e5).toFixed(2)} L`;
+  return formatINR(n, 0);
+}
+
+/** Collapse long tails into "Others" and assign sequential brand colors. */
+function buildAllocSlices(assets, valueKey, maxSlices = 7) {
+  const sorted = [...assets]
+    .map((a) => ({
+      name: a.name,
+      symbol: a.symbol,
+      value: Number(a[valueKey]) || 0,
+    }))
+    .filter((a) => a.value > 0)
+    .sort((a, b) => b.value - a.value);
+
+  if (!sorted.length) return [];
+
+  const head = sorted.slice(0, maxSlices);
+  const tail = sorted.slice(maxSlices);
+  const restSum = tail.reduce((s, d) => s + d.value, 0);
+
+  const slices = head.map((item, i) => ({
+    ...item,
+    color: ALLOC_PALETTE[i % ALLOC_PALETTE.length],
+  }));
+
+  if (restSum > 0) {
+    slices.push({
+      name: "Others",
+      symbol: "OTHERS",
+      value: restSum,
+      color: "#94a3b8",
+    });
+  }
+
+  return slices;
+}
+
+function AllocTooltip({ active, payload, total }) {
+  if (!active || !payload?.length) return null;
+  const item = payload[0];
+  const pct = total > 0 ? (item.value / total) * 100 : 0;
+  return (
+    <div className="pt-alloc-tooltip">
+      <strong>{item.name}</strong>
+      {formatINR(item.value)} · {pct.toFixed(1)}%
+    </div>
+  );
+}
+
+function renderActiveShape(props) {
+  const {
+    cx,
+    cy,
+    innerRadius,
+    outerRadius,
+    startAngle,
+    endAngle,
+    fill,
+  } = props;
+  return (
+    <g>
+      <Sector
+        cx={cx}
+        cy={cy}
+        innerRadius={innerRadius - 2}
+        outerRadius={outerRadius + 5}
+        startAngle={startAngle}
+        endAngle={endAngle}
+        fill={fill}
+        cornerRadius={4}
+      />
+    </g>
+  );
+}
+
+function AllocationDonut({
+  title,
+  subtitle,
+  data,
+  total,
+  activeIndex,
+  onSliceSelect,
+  isMobile,
+}) {
+  const active = activeIndex != null ? data[activeIndex] : null;
+  const centerValue = active ? active.value : total;
+  const centerLabel = active ? active.name : "Total";
+
+  return (
+    <div className="pt-alloc-panel">
+      <div className="pt-alloc-panel-intro">
+        <h3 className="pt-alloc-panel-title">{title}</h3>
+        <p className="pt-alloc-panel-sub">{subtitle}</p>
+      </div>
+
+      <div className="pt-alloc-chart-wrap">
+        <div className="pt-alloc-center">
+          <div className="pt-alloc-center-label">
+            {active ? "Selected" : "Total"}
+          </div>
+          <div className="pt-alloc-center-value">
+            {formatCompactINR(centerValue)}
+          </div>
+          {active && (
+            <div className="pt-alloc-center-name">{centerLabel}</div>
+          )}
+        </div>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={data}
+              dataKey="value"
+              nameKey="name"
+              cx="50%"
+              cy="50%"
+              innerRadius={isMobile ? 62 : 70}
+              outerRadius={isMobile ? 86 : 96}
+              paddingAngle={2.5}
+              cornerRadius={5}
+              stroke="transparent"
+              strokeWidth={0}
+              activeIndex={activeIndex ?? undefined}
+              activeShape={renderActiveShape}
+              onClick={(_, index) => onSliceSelect(index)}
+              onMouseEnter={(_, index) => onSliceSelect(index)}
+              onMouseLeave={() => onSliceSelect(null)}
+              isAnimationActive
+              animationDuration={600}
+              animationBegin={80}
+            >
+              {data.map((entry, index) => (
+                <Cell
+                  key={`${title}-${entry.name}-${index}`}
+                  fill={entry.color}
+                  fillOpacity={
+                    activeIndex == null || activeIndex === index ? 1 : 0.35
+                  }
+                  style={{ cursor: "pointer", outline: "none" }}
+                />
+              ))}
+            </Pie>
+            <Tooltip
+              content={<AllocTooltip total={total} />}
+              wrapperStyle={{ outline: "none" }}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="pt-alloc-legend">
+        {data.map((item, index) => {
+          const pct = total > 0 ? (item.value / total) * 100 : 0;
+          return (
+            <div
+              key={item.name}
+              className={`pt-alloc-legend-row ${
+                activeIndex === index ? "is-active" : ""
+              }`}
+              onMouseEnter={() => onSliceSelect(index)}
+              onMouseLeave={() => onSliceSelect(null)}
+              onClick={() =>
+                onSliceSelect(activeIndex === index ? null : index)
+              }
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSliceSelect(activeIndex === index ? null : index);
+                }
+              }}
+            >
+              <span
+                className="pt-alloc-swatch"
+                style={{ background: item.color }}
+              />
+              <span className="pt-alloc-legend-name">{item.name}</span>
+              <span className="pt-alloc-legend-pct">{pct.toFixed(1)}%</span>
+              <div className="pt-alloc-legend-bar">
+                <span
+                  style={{
+                    width: `${Math.min(pct, 100)}%`,
+                    background: item.color,
+                  }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function CombinedPortfolio() {
   const router = useRouter();
   const dispatch = useDispatch();
-  const { isAuthenticated, user } = useSelector((state) => state.auth);
+  const { isAuthenticated, hydrated, loading: authLoading } = useSelector(
+    (state) => state.auth
+  );
   const { portfolios, loading, error } = useSelector(
     (state) => state.portfolio
   );
+  const isMobile = useMediaQuery("(max-width: 768px)");
 
   const [combinedAssets, setCombinedAssets] = useState([]);
   const [activeIndexInvested, setActiveIndexInvested] = useState(null);
   const [activeIndexCurrent, setActiveIndexCurrent] = useState(null);
 
-  const formatName = (name) => name.split(".")[0];
-
-  const renderActiveShape = (props) => {
-    const {
-      cx,
-      cy,
-      midAngle,
-      innerRadius,
-      outerRadius,
-      startAngle,
-      endAngle,
-      fill,
-      payload,
-      percent,
-      value,
-    } = props;
-
-    const RADIAN = Math.PI / 180;
-    const sin = Math.sin(-RADIAN * midAngle);
-    const cos = Math.cos(-RADIAN * midAngle);
-    const sx = cx + (outerRadius + 10) * cos;
-    const sy = cy + (outerRadius + 10) * sin;
-
-    return (
-      <>
-        <Sector
-          cx={cx}
-          cy={cy}
-          innerRadius={innerRadius}
-          outerRadius={outerRadius + 10}
-          startAngle={startAngle}
-          endAngle={endAngle}
-          fill={fill}
-        />
-        <text
-          x={sx}
-          y={sy}
-          fill="#333"
-          textAnchor={cos >= 0 ? "start" : "end"}
-          dominantBaseline="central"
-          style={{ fontWeight: 600 }}
-        >
-          {`${formatName(payload.name)}: ₹${value.toLocaleString("en-IN")}`}
-        </text>
-      </>
-    );
-  };
-
-  const handleClickInvested = (_, index) => {
-    setActiveIndexInvested(index === activeIndexInvested ? null : index);
-  };
-
-  const handleClickCurrent = (_, index) => {
-    setActiveIndexCurrent(index === activeIndexCurrent ? null : index);
-  };
-
-  const generateColorFromString = (str) => {
-    let hash = 5381;
-    for (let i = 0; i < str.length; i++) {
-      hash = (hash * 33) ^ str.charCodeAt(i);
-    }
-    const hue = Math.abs(hash) % 360;
-    const saturation = 60 + (Math.abs(hash) % 20);
-    const lightness = 45 + (Math.abs(hash >> 3) % 10);
-    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-  };
-
   useEffect(() => {
+    if (!hydrated || authLoading) return;
     if (!isAuthenticated) {
-      router.push("/auth/login");
-    } else {
-      dispatch(fetchPortfolios());
+      router.replace("/auth/login");
+      return;
     }
-  }, [isAuthenticated, dispatch, router]);
+    dispatch(fetchPortfolios());
+  }, [isAuthenticated, hydrated, authLoading, dispatch, router]);
 
   useEffect(() => {
-    if (portfolios) {
-      const allPortfolios = [
-        ...(portfolios.ownPortfolios || []),
-        ...(portfolios.familyPortfolios || []),
-      ];
+    if (!portfolios) return;
 
-      const assetMap = new Map();
+    const allPortfolios = [
+      ...(portfolios.ownPortfolios || []),
+      ...(portfolios.familyPortfolios || []),
+    ];
 
-      allPortfolios.forEach((portfolio) => {
-        portfolio.assets?.forEach((asset) => {
-          if (!asset.symbol) return;
+    const assetMap = new Map();
 
-          if (assetMap.has(asset.symbol)) {
-            const existing = assetMap.get(asset.symbol);
-            const totalQuantity = existing.quantity + asset.quantity;
-            const totalInvested =
-              existing.invested + asset.quantity * asset.averagePrice;
+    allPortfolios.forEach((portfolio) => {
+      portfolio.assets?.forEach((asset) => {
+        if (!asset.symbol) return;
 
-            assetMap.set(asset.symbol, {
-              ...existing,
-              quantity: totalQuantity,
-              invested: totalInvested,
-              currentValue: totalQuantity * asset.currentPrice,
-              averagePrice: totalInvested / totalQuantity,
-            });
-          } else {
-            assetMap.set(asset.symbol, {
-              name: asset.symbol.split(".")[0],
-              symbol: asset.symbol,
-              quantity: asset.quantity,
-              averagePrice: asset.averagePrice,
-              currentPrice: asset.currentPrice,
-              invested: asset.quantity * asset.averagePrice,
-              currentValue: asset.quantity * asset.currentPrice,
-            });
-          }
-        });
+        if (assetMap.has(asset.symbol)) {
+          const existing = assetMap.get(asset.symbol);
+          const totalQuantity = existing.quantity + asset.quantity;
+          const totalInvested =
+            existing.invested + asset.quantity * asset.averagePrice;
+
+          assetMap.set(asset.symbol, {
+            ...existing,
+            quantity: totalQuantity,
+            invested: totalInvested,
+            currentValue: totalQuantity * asset.currentPrice,
+            averagePrice: totalInvested / totalQuantity,
+            currentPrice: asset.currentPrice,
+          });
+        } else {
+          assetMap.set(asset.symbol, {
+            name: asset.symbol.split(".")[0],
+            symbol: asset.symbol,
+            quantity: asset.quantity,
+            averagePrice: asset.averagePrice,
+            currentPrice: asset.currentPrice,
+            invested: asset.quantity * asset.averagePrice,
+            currentValue: asset.quantity * asset.currentPrice,
+          });
+        }
       });
+    });
 
-      const combined = Array.from(assetMap.values())
-        .map((asset) => ({
-          ...asset,
-          profit: asset.currentValue - asset.invested,
-          profitPercentage:
-            asset.invested > 0
-              ? ((asset.currentValue - asset.invested) / asset.invested) * 100
-              : 0,
-        }))
-        .sort((a, b) => b.currentValue - a.currentValue);
+    const combined = Array.from(assetMap.values())
+      .map((asset) => ({
+        ...asset,
+        profit: asset.currentValue - asset.invested,
+        profitPercentage:
+          asset.invested > 0
+            ? ((asset.currentValue - asset.invested) / asset.invested) * 100
+            : 0,
+      }))
+      .sort((a, b) => b.currentValue - a.currentValue);
 
-      setCombinedAssets(combined);
-    }
+    setCombinedAssets(combined);
   }, [portfolios]);
 
-  if (!isAuthenticated || loading) {
+  const pieDataInvested = useMemo(
+    () => buildAllocSlices(combinedAssets, "invested"),
+    [combinedAssets]
+  );
+  const pieDataCurrent = useMemo(
+    () => buildAllocSlices(combinedAssets, "currentValue"),
+    [combinedAssets]
+  );
+  const investedTotal = useMemo(
+    () => pieDataInvested.reduce((s, d) => s + d.value, 0),
+    [pieDataInvested]
+  );
+
+  if (!hydrated || authLoading || !isAuthenticated || loading) {
     return (
       <Layout>
-        <LoadingOverlay visible={true} overlayBlur={2} />
+        <LoadingOverlay visible overlayBlur={2} />
       </Layout>
     );
   }
@@ -193,299 +332,312 @@ function CombinedPortfolio() {
     (sum, asset) => sum + asset.currentValue,
     0
   );
-  const totalInvested = combinedAssets.reduce(
-    (sum, asset) => sum + asset.invested,
-    0
-  );
+  const totalInvested = [
+    ...(portfolios?.ownPortfolios || []),
+    ...(portfolios?.familyPortfolios || []),
+  ].reduce((sum, p) => sum + calculateNetInvested(p), 0);
   const totalProfit = totalValue - totalInvested;
   const profitPercentage =
     totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
 
-  const pieDataInvested = combinedAssets.map((asset) => ({
-    name: asset.symbol.split(".")[0],
-    value: asset.invested,
-    color: generateColorFromString(asset.symbol),
-  }));
-
-  const pieDataCurrent = combinedAssets.map((asset) => ({
-    name: asset.symbol.split(".")[0],
-    value: asset.currentValue,
-    color: generateColorFromString(asset.symbol),
-  }));
-
   return (
-    <Layout>
+    <Layout title="Combined Portfolio">
       <Container size="xl" py="md" px="sm">
-        <Group position="apart" mb="xl" noWrap>
-          <MediaQuery smallerThan="sm" styles={{ fontSize: '1.5rem' }}>
-            <Title order={2}>Combined Portfolio</Title>
-          </MediaQuery>
-          <Button
-            leftIcon={<IconArrowLeft size={16} />}
-            onClick={() => router.push("/")}
-            variant="outline"
-            size="md"
-            compact={window.innerWidth < 400}
-          >
-            <MediaQuery smallerThan="xs" styles={{ display: 'none' }}>
-              <span>Back</span>
-            </MediaQuery>
-          </Button>
-        </Group>
-
-        {error && (
-          <Alert color="red" title="Error" mb="xl">
-            {error}
-          </Alert>
-        )}
-
-        {/* Summary Cards */}
-        <SimpleGrid
-          cols={3}
-          breakpoints={[
-            { maxWidth: 'md', cols: 2 },
-            { maxWidth: 'sm', cols: 1 }
-          ]}
-          mb="xl"
-        >
-          <Paper withBorder p="md" radius="md">
-            <Group position="apart">
-              <Text size="sm" color="dimmed">
-                Total Value
-              </Text>
-              <IconCoin size={20} color="#4C6EF5" />
-            </Group>
-            <Text size="xl" weight={700} mt="sm">
-              ₹
-              {totalValue.toLocaleString("en-IN", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
-            </Text>
-          </Paper>
-
-          <Paper withBorder p="md" radius="md">
-            <Group position="apart">
-              <Text size="sm" color="dimmed">
-                Total Invested
-              </Text>
-              <IconPigMoney size={20} color="#228BE6" />
-            </Group>
-            <Text size="xl" weight={700} mt="sm">
-              ₹
-              {totalInvested.toLocaleString("en-IN", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
-            </Text>
-          </Paper>
-
-          <Paper withBorder p="md" radius="md">
-            <Group position="apart">
-              <Text size="sm" color="dimmed">
-                Profit/Loss
-              </Text>
-              {totalProfit >= 0 ? (
-                <IconTrendingUp size={20} color="#40C057" />
-              ) : (
-                <IconTrendingDown size={20} color="#FA5252" />
-              )}
-            </Group>
-            <Text
-              size="xl"
-              weight={700}
-              mt="sm"
-              color={totalProfit >= 0 ? "green" : "red"}
+        <div className="pt-combined-page">
+          <div className="pt-combined-header">
+            <div>
+              <h1 className="pt-combined-title">Combined Portfolio</h1>
+              <p className="pt-combined-sub">
+                All personal and family holdings in one view
+              </p>
+            </div>
+            <Button
+              leftIcon={<IconArrowLeft size={16} />}
+              onClick={() => router.push("/")}
+              variant="default"
+              radius="md"
+              styles={{
+                root: {
+                  borderColor: "var(--pt-line)",
+                  fontWeight: 600,
+                },
+              }}
             >
-              ₹
-              {Math.abs(totalProfit).toLocaleString("en-IN", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
-              <Text
-                component="span"
-                ml="xs"
-                size="sm"
-                color={totalProfit >= 0 ? "green" : "red"}
+              Back
+            </Button>
+          </div>
+
+          {error && (
+            <Alert color="red" title="Error" radius="md">
+              {error}
+            </Alert>
+          )}
+
+          <div className="pt-combined-metrics">
+            <div className="pt-combined-metric">
+              <p className="pt-combined-metric-label">Total value</p>
+              <p className="pt-combined-metric-value">{formatINR(totalValue)}</p>
+              <p className="pt-combined-metric-hint">
+                Across {combinedAssets.length} securities
+              </p>
+            </div>
+            <div className="pt-combined-metric">
+              <p className="pt-combined-metric-label">Net invested</p>
+              <p className="pt-combined-metric-value">
+                {formatINR(totalInvested)}
+              </p>
+              <p className="pt-combined-metric-hint">Buys minus sells</p>
+            </div>
+            <div className="pt-combined-metric">
+              <p className="pt-combined-metric-label">Overall P&amp;L</p>
+              <p
+                className={`pt-combined-metric-value ${
+                  totalProfit >= 0 ? "is-pos" : "is-neg"
+                }`}
               >
-                ({profitPercentage.toFixed(2)}%)
-              </Text>
-            </Text>
-          </Paper>
-        </SimpleGrid>
+                {totalProfit >= 0 ? "+" : "−"}
+                {formatINR(Math.abs(totalProfit))}
+              </p>
+              <p
+                className="pt-combined-metric-hint"
+                style={{
+                  color: totalProfit >= 0 ? "#047857" : "#b91c1c",
+                  fontWeight: 600,
+                }}
+              >
+                {totalProfit >= 0 ? "+" : ""}
+                {profitPercentage.toFixed(2)}%
+              </p>
+            </div>
+          </div>
 
-        {/* Dual Pie Charts */}
-        <Card withBorder shadow="sm" radius="md" mb="xl">
-          <Card.Section withBorder inheritPadding py="xs">
-            <Text weight={600}>Asset Allocation</Text>
-          </Card.Section>
-          <Grid gutter="xl">
-            <Grid.Col sm={12} md={6}>
-              <Center>
-                <Text weight={500} mb="sm">
-                  Invested Amount
+          <div className="pt-alloc">
+            <div className="pt-alloc-head">
+              <h2 className="pt-holdings-section-title">Asset allocation</h2>
+              <p className="pt-holdings-section-sub">
+                Top holdings by cost basis and market value
+              </p>
+            </div>
+            <div className="pt-alloc-grid">
+              <AllocationDonut
+                title="Invested"
+                subtitle="Share of capital deployed"
+                data={pieDataInvested}
+                total={investedTotal}
+                activeIndex={activeIndexInvested}
+                onSliceSelect={setActiveIndexInvested}
+                isMobile={isMobile}
+              />
+              <AllocationDonut
+                title="Current value"
+                subtitle="Share of portfolio today"
+                data={pieDataCurrent}
+                total={totalValue}
+                activeIndex={activeIndexCurrent}
+                onSliceSelect={setActiveIndexCurrent}
+                isMobile={isMobile}
+              />
+            </div>
+          </div>
+
+          <div className="pt-holdings-section">
+            <div className="pt-holdings-section-head">
+              <div>
+                <h2 className="pt-holdings-section-title">All holdings</h2>
+                <p className="pt-holdings-section-sub">
+                  {combinedAssets.length} securities · sorted by value
+                </p>
+              </div>
+            </div>
+
+            {combinedAssets.length === 0 ? (
+              <div style={{ padding: "2rem", textAlign: "center" }}>
+                <Text color="dimmed">
+                  No holdings across your portfolios yet.
                 </Text>
-              </Center>
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={pieDataInvested}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={window.innerWidth < 768 ? 80 : 100}
-                    innerRadius={window.innerWidth < 768 ? 40 : 60}
-                    activeIndex={activeIndexInvested}
-                    activeShape={renderActiveShape}
-                    onClick={handleClickInvested}
-                  >
-                    {pieDataInvested.map((entry, index) => (
-                      <Cell key={`cell-invested-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value) => `₹${value.toLocaleString("en-IN")}`}
-                  />
-                  <MediaQuery largerThan="sm" styles={{ display: 'block' }}>
-                    <Legend 
-                      layout="vertical" 
-                      verticalAlign="middle" 
-                      align="right"
-                      wrapperStyle={{
-                        paddingLeft: '10px',
-                        fontSize: window.innerWidth < 768 ? '12px' : '14px'
-                      }}
-                    />
-                  </MediaQuery>
-                </PieChart>
-              </ResponsiveContainer>
-            </Grid.Col>
-            <Grid.Col sm={12} md={6}>
-              <Center>
-                <Text weight={500} mb="sm">
-                  Current Value
-                </Text>
-              </Center>
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={pieDataCurrent}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={window.innerWidth < 768 ? 80 : 100}
-                    innerRadius={window.innerWidth < 768 ? 40 : 60}
-                    activeIndex={activeIndexCurrent}
-                    activeShape={renderActiveShape}
-                    onClick={handleClickCurrent}
-                  >
-                    {pieDataCurrent.map((entry, index) => (
-                      <Cell key={`cell-current-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value) => `₹${value.toLocaleString("en-IN")}`}
-                  />
-                  <MediaQuery largerThan="sm" styles={{ display: 'block' }}>
-                    <Legend 
-                      layout="vertical" 
-                      verticalAlign="middle" 
-                      align="right"
-                      wrapperStyle={{
-                        paddingLeft: '10px',
-                        fontSize: window.innerWidth < 768 ? '12px' : '14px'
-                      }}
-                    />
-                  </MediaQuery>
-                </PieChart>
-              </ResponsiveContainer>
-            </Grid.Col>
-          </Grid>
-        </Card>
+              </div>
+            ) : (
+              <>
+                <div
+                  className="pt-holdings-scroll pt-combined-desktop"
+                  style={{ maxHeight: "none" }}
+                >
+                  <table className="pt-holdings-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: "24%" }}>Security</th>
+                        <th style={{ width: "9%" }}>Qty</th>
+                        <th style={{ width: "12%" }}>Avg</th>
+                        <th style={{ width: "12%" }}>LTP</th>
+                        <th style={{ width: "13%" }}>Invested</th>
+                        <th style={{ width: "14%" }}>Value</th>
+                        <th style={{ width: "16%" }}>P&amp;L</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {combinedAssets.map((asset, idx) => {
+                        const positive = asset.profit >= 0;
+                        const weight =
+                          totalValue > 0
+                            ? (asset.currentValue / totalValue) * 100
+                            : 0;
+                        const accent =
+                          ALLOC_PALETTE[idx % ALLOC_PALETTE.length];
+                        return (
+                          <tr key={asset.symbol} className="pt-holdings-row">
+                            <td>
+                              <div className="pt-holdings-security">
+                                <div
+                                  className="pt-holdings-avatar"
+                                  style={{
+                                    background: `${accent}18`,
+                                    color: accent,
+                                    borderColor: `${accent}30`,
+                                  }}
+                                >
+                                  {asset.name.slice(0, 2)}
+                                </div>
+                                <div style={{ minWidth: 0 }}>
+                                  <div className="pt-holdings-name">
+                                    {asset.name}
+                                  </div>
+                                  <div className="pt-holdings-meta">
+                                    <span className="pt-holdings-lots">
+                                      {weight.toFixed(1)}% of portfolio
+                                    </span>
+                                  </div>
+                                  <div className="pt-combined-weight">
+                                    <span
+                                      style={{
+                                        width: `${Math.min(weight, 100)}%`,
+                                        background: accent,
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td>{asset.quantity.toFixed(2)}</td>
+                            <td>{formatINR(asset.averagePrice)}</td>
+                            <td>{formatINR(asset.currentPrice)}</td>
+                            <td>{formatINR(asset.invested)}</td>
+                            <td>
+                              <span className="pt-holdings-value">
+                                {formatINR(asset.currentValue)}
+                              </span>
+                            </td>
+                            <td>
+                              <div className="pt-holdings-stack">
+                                <span
+                                  className={
+                                    positive
+                                      ? "pt-holdings-pos"
+                                      : "pt-holdings-neg"
+                                  }
+                                >
+                                  {positive ? "+" : ""}
+                                  {asset.profitPercentage.toFixed(2)}%
+                                </span>
+                                <span
+                                  className={`pt-holdings-sub ${
+                                    positive
+                                      ? "pt-holdings-pos"
+                                      : "pt-holdings-neg"
+                                  }`}
+                                >
+                                  {formatINR(asset.profit)}
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
 
-        {/* Combined Assets Table */}
-        <Card withBorder shadow="sm" radius="md">
-          <Card.Section withBorder inheritPadding py="xs">
-            <Text weight={600}>All Assets ({combinedAssets.length})</Text>
-          </Card.Section>
-
-          <ScrollArea type="auto" offsetScrollbars>
-            <Table verticalSpacing="sm" mt="md" sx={{ minWidth: 700 }}>
-              <thead>
-                <tr>
-                  <th>Asset</th>
-                  <MediaQuery smallerThan="md" styles={{ display: 'none' }}>
-                    <th>Quantity</th>
-                  </MediaQuery>
-                  <MediaQuery smallerThan="lg" styles={{ display: 'none' }}>
-                    <th>Avg. Price</th>
-                  </MediaQuery>
-                  <th>Current Price</th>
-                  <th>Invested</th>
-                  <th>Current Value</th>
-                  <th>P/L</th>
-                </tr>
-              </thead>
-              <tbody>
-                {combinedAssets.map((asset) => (
-                  <tr key={asset.symbol}>
-                    <td>
-                      <Group spacing="sm" noWrap>
-                        <Avatar size={30} radius={30}>
-                          {asset.symbol.substring(0, 2)}
-                        </Avatar>
-                        <div>
-                          <Text size="sm" weight={500} lineClamp={1}>
-                            {asset.name}
-                          </Text>
-                          <MediaQuery largerThan="md" styles={{ display: 'none' }}>
-                            <Text size="xs" color="dimmed">
-                              Qty: {asset.quantity.toFixed(2)}
-                            </Text>
-                          </MediaQuery>
-                        </div>
-                      </Group>
-                    </td>
-                    <MediaQuery smallerThan="md" styles={{ display: 'none' }}>
-                      <td>{asset.quantity.toFixed(2)}</td>
-                    </MediaQuery>
-                    <MediaQuery smallerThan="lg" styles={{ display: 'none' }}>
-                      <td>₹{asset.averagePrice.toFixed(2)}</td>
-                    </MediaQuery>
-                    <td>₹{asset.currentPrice.toFixed(2)}</td>
-                    <td>₹{asset.invested.toFixed(2)}</td>
-                    <td>₹{asset.currentValue.toFixed(2)}</td>
-                    <td>
-                      <Text color={asset.profit >= 0 ? "green" : "red"}>
-                        ₹{Math.abs(asset.profit).toFixed(2)}
-                        <MediaQuery smallerThan="sm" styles={{ display: 'none' }}>
-                          <Text 
-                            component="span" 
-                            ml={4} 
-                            size="xs" 
-                            color={asset.profit >= 0 ? "green" : "red"}
+                <div className="pt-combined-mobile">
+                  {combinedAssets.map((asset, idx) => {
+                    const positive = asset.profit >= 0;
+                    const weight =
+                      totalValue > 0
+                        ? (asset.currentValue / totalValue) * 100
+                        : 0;
+                    const accent = ALLOC_PALETTE[idx % ALLOC_PALETTE.length];
+                    return (
+                      <div key={asset.symbol} className="pt-combined-card">
+                        <div className="pt-holdings-security">
+                          <div
+                            className="pt-holdings-avatar"
+                            style={{
+                              background: `${accent}18`,
+                              color: accent,
+                              borderColor: `${accent}30`,
+                            }}
                           >
-                            ({asset.profitPercentage.toFixed(2)}%)
-                          </Text>
-                        </MediaQuery>
-                      </Text>
-                      <MediaQuery smallerThan="sm" styles={{ display: 'none' }}>
-                        <Progress
-                          value={Math.abs(asset.profitPercentage)}
-                          color={asset.profit >= 0 ? "green" : "red"}
-                          size="sm"
-                          mt={5}
-                        />
-                      </MediaQuery>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-          </ScrollArea>
-        </Card>
+                            {asset.name.slice(0, 2)}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="pt-holdings-name">{asset.name}</div>
+                            <div className="pt-holdings-lots">
+                              {weight.toFixed(1)}% of portfolio
+                            </div>
+                            <div className="pt-combined-weight">
+                              <span
+                                style={{
+                                  width: `${Math.min(weight, 100)}%`,
+                                  background: accent,
+                                }}
+                              />
+                            </div>
+                          </div>
+                          <div className="pt-holdings-stack">
+                            <span
+                              className={
+                                positive ? "pt-holdings-pos" : "pt-holdings-neg"
+                              }
+                            >
+                              {positive ? "+" : ""}
+                              {asset.profitPercentage.toFixed(2)}%
+                            </span>
+                          </div>
+                        </div>
+                        <div className="pt-combined-card-grid">
+                          <div>
+                            <div className="pt-holdings-card-label">Value</div>
+                            <div className="pt-holdings-value">
+                              {formatINR(asset.currentValue)}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="pt-holdings-card-label">
+                              Invested
+                            </div>
+                            <Text size="sm" fw={600}>
+                              {formatINR(asset.invested)}
+                            </Text>
+                          </div>
+                          <div>
+                            <div className="pt-holdings-card-label">LTP</div>
+                            <Text size="sm" fw={600}>
+                              {formatINR(asset.currentPrice)}
+                            </Text>
+                          </div>
+                          <div>
+                            <div className="pt-holdings-card-label">Qty</div>
+                            <Text size="sm" fw={600}>
+                              {asset.quantity.toFixed(2)}
+                            </Text>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       </Container>
     </Layout>
   );

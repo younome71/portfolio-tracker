@@ -1,22 +1,23 @@
-﻿import Head from 'next/head';
+import Head from 'next/head';
 import Navbar from './Navbar';
 import Footer from './Footer';
 
 export default function Layout({ children, title = 'Portfolio Tracker' }) {
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
+    <div className="pt-app-shell">
       <Head>
         <title>{title}</title>
-        <meta name="description" content="Track your investment portfolio" />
+        <meta
+          name="description"
+          content="Track your family's investments in one place."
+        />
         <link rel="icon" href="/favicon.ico" />
       </Head>
-      
+
       <Navbar />
-      
-      <main className="flex-grow container mx-auto px-4 py-8">
-        {children}
-      </main>
-      
+
+      <main className="pt-app-main">{children}</main>
+
       <Footer />
     </div>
   );

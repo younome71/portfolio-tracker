@@ -1,80 +1,163 @@
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
 }
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const cron = require('node-cron');
-const path = require('path');
 const { updateStockPrices } = require('./services/stockService');
 const authRoutes = require('./routes/auth');
 const portfolioRoutes = require('./routes/portfolio');
 const userRoutes = require('./routes/user');
+const errorHandler = require('./middlewares/error');
+const { requestIdMiddleware, sendError, sendSuccess } = require('./utils/apiResponse');
+const logger = require('./utils/logger');
 
 const app = express();
+const PORT = process.env.PORT || 5000;
 
-// Middleware
-app.use(cors());
-app.use(express.json());
+const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
 
-app.get('/', async (req, res) => {
-  try {
-    const now = new Date();
-    
-    // Convert to IST
-    const istTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
-    const hours = istTime.getHours();
-    const minutes = istTime.getMinutes();
+app.set('trust proxy', 1);
 
-    let updateMessage = 'No update this time';
+app.use(requestIdMiddleware);
+app.use(helmet());
+app.use(
+  cors({
+    origin: [clientUrl, 'http://localhost:3000'],
+    credentials: true,
+  })
+);
+app.use(express.json({ limit: '10kb' }));
 
-    // Market hours: 09:15 - 15:30 IST
-    const marketOpen = (hours > 9 || (hours === 9 && minutes >= 15));
-    const marketClose = (hours < 15 || (hours === 15 && minutes <= 30));
-
-    if ((minutes === 0 || (hours === 15 && minutes === 30)) && marketOpen && marketClose) {
-      await updateStockPrices();
-      updateMessage = 'Stock update completed.';
-      console.log(`Stock update triggered at ${istTime.toLocaleTimeString('en-IN', { hour12: false })} IST`);
-    }
-
-
-    res.status(200).send(`Portfolio Tracker backend is awake! ${updateMessage}`);
-  } catch (error) {
-    console.error('Stock update failed:', error);
-    res.status(500).send('Backend awake but stock update failed.');
-  }
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: {
+      code: 'RATE_LIMITED',
+      message: 'Too many auth attempts, please try again later',
+      details: {},
+    },
+  },
 });
 
-// Routes
-app.use('/api/auth', authRoutes);
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+app.get('/ready', (req, res) => {
+  const dbReady = mongoose.connection.readyState === 1;
+  if (!dbReady) {
+    return res.status(503).json({ status: 'not_ready', db: false });
+  }
+  return res.status(200).json({ status: 'ready', db: true });
+});
+
+app.get('/', (req, res) => {
+  res.status(200).json({
+    status: 'Portfolio Tracker API',
+    health: '/health',
+    ready: '/ready',
+  });
+});
+
+app.use('/api', apiLimiter);
+app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/portfolio', portfolioRoutes);
 app.use('/api/user', userRoutes);
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-.then(() => console.log('Connected to MongoDB'))
-.catch(err => console.error('MongoDB connection error:', err));
+app.post('/api/admin/manual-update', async (req, res) => {
+  const adminKey = process.env.ADMIN_KEY;
+  if (!adminKey || req.header('X-Admin-Key') !== adminKey) {
+    return sendError(res, 403, 'FORBIDDEN', 'Admin key required');
+  }
 
-// Schedule stock price updates every hour
-cron.schedule('0 * * * *', () => {
-  console.log('Running scheduled stock price update...');
-  updateStockPrices().catch(console.error);
+  try {
+    // Respond immediately; job runs with in-process mutex
+    updateStockPrices({ force: true }).catch((err) =>
+      logger.error(`Manual update failed: ${err.message}`)
+    );
+    return sendSuccess(res, { accepted: true }, 202);
+  } catch (error) {
+    logger.error(`Manual stock update error: ${error.message}`);
+    return sendError(res, 500, 'UPDATE_FAILED', 'Failed to start stock price update');
+  }
 });
 
-// Run once immediately
-updateStockPrices()
-  .then(() => console.log('Initial stock price update complete.'))
-  .catch(console.error);
-
-// Serve frontend after API routes
-app.use(express.static(path.join(__dirname, '../client/build')));
-app.get(/^\/(?!api).*/, (req, res) => {
-  res.sendFile(path.join(__dirname, '../client/build/index.html'));
+app.use((req, res) => {
+  return sendError(res, 404, 'NOT_FOUND', 'Route not found');
 });
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
+app.use(errorHandler);
+
+async function start() {
+  if (!process.env.MONGODB_URI) {
+    logger.error('MONGODB_URI is not set');
+    process.exit(1);
+  }
+  if (!process.env.JWT_SECRET) {
+    logger.error('JWT_SECRET is not set');
+    process.exit(1);
+  }
+
+  await mongoose.connect(process.env.MONGODB_URI);
+  logger.info('Connected to MongoDB');
+
+  const server = app.listen(PORT, () => {
+    logger.info(`Server running on port ${PORT}`);
+  });
+
+  // Hourly price updates (mutex inside updateStockPrices)
+  cron.schedule('0 * * * *', () => {
+    logger.info('Running scheduled stock price update...');
+    updateStockPrices().catch((err) =>
+      logger.error(`Scheduled update failed: ${err.message}`)
+    );
+  });
+
+  // Initial update after boot (non-blocking)
+  updateStockPrices().catch((err) =>
+    logger.error(`Initial stock price update failed: ${err.message}`)
+  );
+
+  const shutdown = async (signal) => {
+    logger.info(`${signal} received, shutting down gracefully`);
+    server.close(async () => {
+      try {
+        await mongoose.disconnect();
+        logger.info('MongoDB disconnected');
+        process.exit(0);
+      } catch (err) {
+        logger.error(`Shutdown error: ${err.message}`);
+        process.exit(1);
+      }
+    });
+
+    setTimeout(() => {
+      logger.error('Forced shutdown after timeout');
+      process.exit(1);
+    }, 10000).unref();
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+}
+
+start().catch((err) => {
+  logger.error(`Failed to start server: ${err.message}`);
+  process.exit(1);
+});

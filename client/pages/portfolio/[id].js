@@ -37,7 +37,9 @@ export default function PortfolioDetail() {
   const { id } = router.query;
   const dispatch = useDispatch();
   const theme = useMantineTheme();
-  const { isAuthenticated } = useSelector((state) => state.auth);
+  const { isAuthenticated, hydrated, loading: authLoading } = useSelector(
+    (state) => state.auth
+  );
   const { currentPortfolio, loading, error } = useSelector(
     (state) => state.portfolio
   );
@@ -45,12 +47,15 @@ export default function PortfolioDetail() {
   const [showAssetPerformance, setShowAssetPerformance] = useState(false);
 
   useEffect(() => {
+    if (!hydrated || authLoading) return;
     if (!isAuthenticated) {
-      router.push("/auth/login");
-    } else if (id) {
+      router.replace("/auth/login");
+      return;
+    }
+    if (id) {
       dispatch(fetchPortfolioDetails(id));
     }
-  }, [isAuthenticated, id, dispatch, router]);
+  }, [isAuthenticated, hydrated, authLoading, id, dispatch, router]);
 
   const getBaseSymbol = (symbol) => {
     if (!symbol) return "";
@@ -62,7 +67,7 @@ export default function PortfolioDetail() {
     setShowAssetPerformance(true);
   };
 
-  if (!isAuthenticated || loading) {
+  if (!hydrated || authLoading || !isAuthenticated || loading) {
     return (
       <Layout>
         <Container size="xl">
@@ -150,28 +155,39 @@ export default function PortfolioDetail() {
             </Card.Section>
           </Card>
 
-          <Card withBorder shadow="sm" radius="md">
-            <Card.Section withBorder inheritPadding py="xs">
-              <Group position="apart" align="center">
-                <Text weight={500}>Asset Holdings</Text>
-                <Button
-                  leftIcon={<IconPlus size={16} />}
-                  onClick={() => router.push(`/portfolio/${id}/add-asset`)}
-                  color="green"
-                  size="md"
-                >
-                  Add Asset
-                </Button>
-              </Group>
-            </Card.Section>
-
-            <Card.Section p="md">
+          <div className="pt-holdings-section">
+            <div className="pt-holdings-section-head">
+              <div>
+                <h2 className="pt-holdings-section-title">Asset Holdings</h2>
+                <p className="pt-holdings-section-sub">
+                  Live values · grouped by security
+                </p>
+              </div>
+              <Button
+                leftIcon={<IconPlus size={16} />}
+                onClick={() => router.push(`/portfolio/${id}/add-asset`)}
+                color="teal"
+                size="md"
+                radius="md"
+                styles={{
+                  root: {
+                    background: "var(--pt-teal)",
+                    fontFamily: "var(--pt-display)",
+                    fontWeight: 700,
+                    "&:hover": { background: "var(--pt-teal-deep)" },
+                  },
+                }}
+              >
+                Add Asset
+              </Button>
+            </div>
+            <div style={{ padding: "0.85rem" }}>
               <AssetTable
                 portfolio={currentPortfolio}
                 onViewPerformance={handleViewAssetPerformance}
               />
-            </Card.Section>
-          </Card>
+            </div>
+          </div>
         </Stack>
 
         {/* Asset Performance Modal */}
@@ -182,7 +198,7 @@ export default function PortfolioDetail() {
             <Group spacing="xs">
               <IconTrendingUp size={20} />
               <Text size="xl" weight={600}>
-                {selectedAsset ? selectedAsset.split('.')[0] : ''} Hi
+                {selectedAsset ? selectedAsset.split('.')[0] : ''} Performance
               </Text>
             </Group>
           }

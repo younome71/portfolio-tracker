@@ -23,6 +23,7 @@ import {
 import { Line } from "react-chartjs-2";
 import { useEffect, useState } from "react";
 import { IconAlertCircle } from "@tabler/icons-react";
+import { parseSymbol } from "../utils/symbols";
 
 ChartJS.register(
   CategoryScale,
@@ -69,9 +70,11 @@ export default function AssetPerformanceChart({ portfolio, assetSymbol }) {
     if (!portfolio?.assets?.length || !assetSymbol) return;
 
     try {
-      const matchingAssets = portfolio.assets.filter(
-        (asset) => asset.symbol === assetSymbol
-      );
+      const target = parseSymbol(assetSymbol);
+      const matchingAssets = portfolio.assets.filter((asset) => {
+        const parsed = parseSymbol(asset.symbol);
+        return parsed.ticker === target.ticker;
+      });
 
       if (!matchingAssets.length) {
         setChartData(null);
@@ -83,14 +86,6 @@ export default function AssetPerformanceChart({ portfolio, assetSymbol }) {
 
       for (const asset of matchingAssets) {
         const purchaseDate = safeParseDate(asset.priceHistory?.[0]?.date);
-
-        console.log("Asset:", asset);
-        console.log(
-          "Raw purchaseDate:",
-          asset.purchaseDate,
-          "Fallback createdAt:",
-          asset.createdAt
-        );
 
         if (!purchaseDate) {
           console.warn(

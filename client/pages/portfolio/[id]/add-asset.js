@@ -4,18 +4,15 @@ import { useDispatch } from "react-redux";
 import {
   Container,
   Title,
-  Text,
   Card,
-  TextInput,
   NumberInput,
   Button,
   Group,
-  Loader,
   Alert,
   Space,
-  useMantineTheme,
   Select,
   Stack,
+  TextInput,
 } from "@mantine/core";
 import {
   IconArrowLeft,
@@ -25,24 +22,87 @@ import {
 } from "@tabler/icons-react";
 import Layout from "../../../components/Layout";
 import { addAsset } from "../../../store/portfolioSlice";
+import { toStoredSymbol } from "../../../utils/symbols";
+
+const INSTRUMENT_OPTIONS = [
+  { value: "EQUITY", label: "Equity (Stock)" },
+  { value: "FD", label: "Fixed Deposit" },
+  { value: "BOND", label: "Bond" },
+  { value: "GOLD", label: "Gold" },
+  { value: "SILVER", label: "Silver" },
+];
+
+function todayInputValue() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function withPurchaseDate(payload, formData) {
+  if (!formData.purchaseDate) return payload;
+  return {
+    ...payload,
+    purchaseDate: new Date(formData.purchaseDate).toISOString(),
+  };
+}
+
+function buildAssetPayload(instrument, formData) {
+  if (instrument === "EQUITY") {
+    return withPurchaseDate(
+      {
+        assetType: "EQUITY",
+        symbol: toStoredSymbol(formData.symbol),
+        quantity: parseFloat(formData.quantity),
+        averagePrice: parseFloat(formData.averagePrice),
+      },
+      formData
+    );
+  }
+  if (instrument === "GOLD" || instrument === "SILVER") {
+    return withPurchaseDate(
+      {
+        assetType: "COMMODITY",
+        symbol: instrument,
+        quantity: parseFloat(formData.quantity),
+        averagePrice: parseFloat(formData.averagePrice),
+      },
+      formData
+    );
+  }
+  // FD / Bond — quantity fixed at 1; averagePrice is principal
+  return withPurchaseDate(
+    {
+      assetType: instrument,
+      name: formData.name,
+      quantity: 1,
+      averagePrice: parseFloat(formData.averagePrice),
+      interestRate: parseFloat(formData.interestRate),
+      maturityDate: formData.maturityDate
+        ? new Date(formData.maturityDate).toISOString()
+        : undefined,
+    },
+    formData
+  );
+}
 
 export default function AddAssetPage() {
   const router = useRouter();
   const { id } = router.query;
   const dispatch = useDispatch();
-  const theme = useMantineTheme();
 
+  const [instrument, setInstrument] = useState("EQUITY");
   const [formData, setFormData] = useState({
     symbol: "",
     quantity: "",
     averagePrice: "",
+    name: "",
+    interestRate: "",
+    maturityDate: "",
+    purchaseDate: todayInputValue(),
   });
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [stockOptions, setStockOptions] = useState([]);
 
-  // Load BSE stock list
   useEffect(() => {
     fetch("/bse_stocks.json")
       .then((res) => res.json())
@@ -56,12 +116,16 @@ export default function AddAssetPage() {
       .catch((err) => console.error("Failed to load stock list:", err));
   }, []);
 
-
   const handleChange = (name, value) => {
-    setFormData({
-      ...formData,
+    setFormData((prev) => ({
+      ...prev,
       [name]: value,
-    });
+    }));
+  };
+
+  const handleInstrumentChange = (value) => {
+    setInstrument(value || "EQUITY");
+    setError("");
   };
 
   const handleSubmit = async (e) => {
@@ -73,20 +137,22 @@ export default function AddAssetPage() {
       await dispatch(
         addAsset({
           portfolioId: id,
-          assetData: {
-            symbol: `${formData.symbol.toUpperCase()}.BSE`,
-            quantity: parseFloat(formData.quantity),
-            averagePrice: parseFloat(formData.averagePrice),
-          },
+          assetData: buildAssetPayload(instrument, formData),
         })
       ).unwrap();
 
       router.push(`/portfolio/${id}`);
     } catch (err) {
-      setError(err.message || "Failed to add asset");
+      setError(
+        typeof err === "string" ? err : err?.message || "Failed to add asset"
+      );
       setLoading(false);
     }
   };
+
+  const isFixedIncome = instrument === "FD" || instrument === "BOND";
+  const isCommodity = instrument === "GOLD" || instrument === "SILVER";
+  const isEquity = instrument === "EQUITY";
 
   return (
     <Layout title="Add Asset">
@@ -125,40 +191,134 @@ export default function AddAssetPage() {
 
             <form onSubmit={handleSubmit}>
               <Stack spacing="lg">
-                {/* Stock Symbol Select */}
                 <Select
-                  label="Stock Symbol"
-                  placeholder="Search or select a stock..."
-                  data={stockOptions}
-                  value={formData.symbol}
-                  onChange={(value) => handleChange("symbol", value)}
-                  searchable
-                  nothingFound="No stocks found"
-                  required
-                  icon={<IconChartLine size={16} />}
-                />
-
-                {/* Quantity */}
-                <NumberInput
-                  label="Quantity"
-                  placeholder="Enter quantity"
-                  value={formData.quantity}
-                  onChange={(value) => handleChange("quantity", value)}
-                  min={0.0001}
-                  step={0.0001}
-                  precision={4}
+                  label="Instrument type"
+                  data={INSTRUMENT_OPTIONS}
+                  value={instrument}
+                  onChange={handleInstrumentChange}
                   required
                 />
 
-                {/* Average Price */}
-                <NumberInput
-                  label="Average Price (₹)"
-                  placeholder="Enter average price"
-                  value={formData.averagePrice}
-                  onChange={(value) => handleChange("averagePrice", value)}
-                  min={0.0001}
-                  step={0.01}
-                  precision={2}
+                {isEquity && (
+                  <Select
+                    label="Stock Symbol (NSE)"
+                    placeholder="Search or select a stock..."
+                    data={stockOptions}
+                    value={formData.symbol}
+                    onChange={(value) => handleChange("symbol", value)}
+                    searchable
+                    nothingFound="No stocks found"
+                    required
+                    icon={<IconChartLine size={16} />}
+                  />
+                )}
+
+                {isFixedIncome && (
+                  <>
+                    <TextInput
+                      label={instrument === "FD" ? "FD name" : "Bond name"}
+                      placeholder={
+                        instrument === "FD"
+                          ? "e.g. HDFC Bank FD"
+                          : "e.g. RBI Floating Rate Bond"
+                      }
+                      value={formData.name}
+                      onChange={(e) => handleChange("name", e.target.value)}
+                      required
+                    />
+                    <NumberInput
+                      label="Principal (₹)"
+                      placeholder="Amount invested"
+                      value={formData.averagePrice}
+                      onChange={(value) => handleChange("averagePrice", value)}
+                      min={0.01}
+                      step={100}
+                      precision={2}
+                      required
+                    />
+                    <NumberInput
+                      label="Interest rate (% p.a.)"
+                      placeholder="e.g. 7.1"
+                      value={formData.interestRate}
+                      onChange={(value) => handleChange("interestRate", value)}
+                      min={0}
+                      max={100}
+                      step={0.1}
+                      precision={2}
+                      required
+                    />
+                    <TextInput
+                      type="date"
+                      label="Maturity date"
+                      value={formData.maturityDate}
+                      onChange={(e) =>
+                        handleChange("maturityDate", e.target.value)
+                      }
+                      required
+                      min={todayInputValue()}
+                    />
+                  </>
+                )}
+
+                {isCommodity && (
+                  <>
+                    <NumberInput
+                      label="Quantity (grams)"
+                      placeholder="Enter grams"
+                      value={formData.quantity}
+                      onChange={(value) => handleChange("quantity", value)}
+                      min={0.0001}
+                      step={0.1}
+                      precision={4}
+                      required
+                    />
+                    <NumberInput
+                      label="Average price (₹ / gram)"
+                      placeholder="Purchase price per gram"
+                      value={formData.averagePrice}
+                      onChange={(value) => handleChange("averagePrice", value)}
+                      min={0.01}
+                      step={1}
+                      precision={2}
+                      required
+                    />
+                  </>
+                )}
+
+                {isEquity && (
+                  <>
+                    <NumberInput
+                      label="Quantity"
+                      placeholder="Enter quantity"
+                      value={formData.quantity}
+                      onChange={(value) => handleChange("quantity", value)}
+                      min={0.0001}
+                      step={0.0001}
+                      precision={4}
+                      required
+                    />
+                    <NumberInput
+                      label="Average Price (₹)"
+                      placeholder="Enter average price"
+                      value={formData.averagePrice}
+                      onChange={(value) => handleChange("averagePrice", value)}
+                      min={0.0001}
+                      step={0.01}
+                      precision={2}
+                      required
+                    />
+                  </>
+                )}
+
+                <TextInput
+                  type="date"
+                  label={
+                    isFixedIncome ? "Deposit / purchase date" : "Purchase date"
+                  }
+                  description="Use the real buy date if you are adding this holding late"
+                  value={formData.purchaseDate}
+                  onChange={(e) => handleChange("purchaseDate", e.target.value)}
+                  max={todayInputValue()}
                   required
                 />
 
@@ -167,8 +327,7 @@ export default function AddAssetPage() {
                     type="submit"
                     leftIcon={<IconPlus size={16} />}
                     loading={loading}
-                    loaderPosition="right"
-                    color="blue"
+                    color="teal"
                     size="md"
                   >
                     Add Asset

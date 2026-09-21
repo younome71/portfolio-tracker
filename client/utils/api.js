@@ -2,10 +2,21 @@
 import { store } from '../store';
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'https://portfolio-tracker-ip4u.onrender.com/api',
+  baseURL:
+    process.env.NEXT_PUBLIC_API_URL ||
+    'http://localhost:5000/api',
 });
 
-// Add a request interceptor to include the auth token
+export function getApiErrorMessage(error, fallback = 'Request failed') {
+  return (
+    error.response?.data?.error?.message ||
+    error.response?.data?.msg ||
+    error.response?.data?.message ||
+    error.message ||
+    fallback
+  );
+}
+
 api.interceptors.request.use(
   (config) => {
     const { token } = store.getState().auth;
@@ -14,18 +25,18 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
-// Add a response interceptor to handle errors
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      // Handle unauthorized access (e.g., redirect to login)
-      console.error('Unauthorized access - please login again');
+    if (error.response?.status === 401 && typeof window !== 'undefined') {
+      // Avoid circular import with authSlice — use action type string
+      store.dispatch({ type: 'auth/logout' });
+      if (!window.location.pathname.startsWith('/auth/')) {
+        window.location.href = '/auth/login';
+      }
     }
     return Promise.reject(error);
   }

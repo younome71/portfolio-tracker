@@ -1,13 +1,26 @@
-﻿import { Html, Head, Main, NextScript } from 'next/document';
+import { Html, Head, Main, NextScript } from 'next/document';
 
 export default function Document() {
   return (
     <Html lang="en">
       <Head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin="anonymous"
+        />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap"
+          rel="stylesheet"
+        />
         <link rel="icon" href="/favicon.ico" />
-        <meta name="description" content="Track your investment portfolio" />
+        <meta
+          name="description"
+          content="Track your family's investments in one place — BSE portfolios, live values, and shared progress."
+        />
       </Head>
-      <body className="bg-gray-50">
+      <body>
         <Main />
         <NextScript />
       </body>

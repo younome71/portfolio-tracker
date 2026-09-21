@@ -13,46 +13,44 @@ import {
   Select,
   Stack,
   Checkbox,
-  rem
+  rem,
 } from '@mantine/core';
 import { IconArrowLeft, IconPlus, IconAlertCircle, IconUsers } from '@tabler/icons-react';
-import Layout from '../components/Layout';
+import Layout from './Layout';
 import { createPortfolio } from '../store/portfolioSlice';
+import { fetchFamilyMembers } from '../store/authSlice';
 
 export default function PortfolioForm() {
   const router = useRouter();
   const dispatch = useDispatch();
-  const { user } = useSelector(state => state.auth);
+  const { user, familyMembers } = useSelector((state) => state.auth);
+  const isFamilyQuery = router.query.isFamily === 'true';
 
   const [formData, setFormData] = useState({
     name: '',
     isFamilyPortfolio: false,
-    familyMemberId: ''
+    familyMemberId: '',
   });
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [familyMembers, setFamilyMembers] = useState([]);
+
+  useEffect(() => {
+    if (isFamilyQuery) {
+      setFormData((prev) => ({ ...prev, isFamilyPortfolio: true }));
+    }
+  }, [isFamilyQuery]);
 
   useEffect(() => {
     if (user?.role === 'parent') {
-      setLoading(true);
-      // Replace with actual API call
-      const mockMembers = [
-        { _id: '1', name: 'Child 1' },
-        { _id: '2', name: 'Child 2' },
-      ];
-      setTimeout(() => {
-        setFamilyMembers(mockMembers);
-        setLoading(false);
-      }, 500); // Simulate network delay
+      dispatch(fetchFamilyMembers());
     }
-  }, [user]);
+  }, [user, dispatch]);
 
   const handleChange = (name, value) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
   };
 
@@ -62,10 +60,18 @@ export default function PortfolioForm() {
     setError('');
 
     try {
-      await dispatch(createPortfolio(formData)).unwrap();
+      await dispatch(
+        createPortfolio({
+          name: formData.name,
+          isFamilyPortfolio: formData.isFamilyPortfolio,
+          familyMemberId: formData.isFamilyPortfolio
+            ? formData.familyMemberId
+            : undefined,
+        })
+      ).unwrap();
       router.push('/');
     } catch (err) {
-      setError(err.message || 'Failed to create portfolio');
+      setError(typeof err === 'string' ? err : err?.message || 'Failed to create portfolio');
       setLoading(false);
     }
   };
@@ -75,12 +81,12 @@ export default function PortfolioForm() {
       <Container size="sm" py="xl">
         <Card withBorder shadow="sm" radius="md">
           <Card.Section withBorder inheritPadding py="sm">
-            <Group justify="space-between">
-              <Title order={3} fw={600}>
+            <Group position="apart">
+              <Title order={3} weight={600}>
                 Create New Portfolio
               </Title>
               <Button
-                leftSection={<IconArrowLeft size={16} />}
+                leftIcon={<IconArrowLeft size={16} />}
                 variant="subtle"
                 color="gray"
                 size="sm"
@@ -93,11 +99,11 @@ export default function PortfolioForm() {
 
           <Card.Section p="md">
             <Space h="md" />
-            
+
             {error && (
-              <Alert 
-                icon={<IconAlertCircle size={rem(18)} />} 
-                title="Error" 
+              <Alert
+                icon={<IconAlertCircle size={rem(18)} />}
+                title="Error"
                 color="red"
                 mb="md"
               >
@@ -106,7 +112,7 @@ export default function PortfolioForm() {
             )}
 
             <form onSubmit={handleSubmit}>
-              <Stack gap="lg">
+              <Stack spacing="lg">
                 <TextInput
                   label="Portfolio Name"
                   placeholder="Enter portfolio name"
@@ -120,34 +126,50 @@ export default function PortfolioForm() {
                   <Checkbox
                     label="This is a family member's portfolio"
                     checked={formData.isFamilyPortfolio}
-                    onChange={(e) => handleChange('isFamilyPortfolio', e.target.checked)}
+                    onChange={(e) =>
+                      handleChange('isFamilyPortfolio', e.currentTarget.checked)
+                    }
                   />
                 )}
 
-                {formData.isFamilyPortfolio && familyMembers.length > 0 && (
+                {formData.isFamilyPortfolio && (
                   <Select
                     label="Family Member"
-                    placeholder="Select family member"
-                    leftSection={<IconUsers size={16} />}
-                    data={familyMembers.map(member => ({
+                    placeholder={
+                      familyMembers?.length
+                        ? 'Select family member'
+                        : 'No linked family members yet'
+                    }
+                    icon={<IconUsers size={16} />}
+                    data={(familyMembers || []).map((member) => ({
                       value: member._id,
-                      label: member.name
+                      label: `${member.name} (${member.email})`,
                     }))}
                     value={formData.familyMemberId}
                     onChange={(value) => handleChange('familyMemberId', value)}
                     required={formData.isFamilyPortfolio}
                     withAsterisk={formData.isFamilyPortfolio}
+                    disabled={!familyMembers?.length}
                   />
                 )}
 
-                <Group justify="flex-end" mt="xl">
+                {formData.isFamilyPortfolio && !familyMembers?.length && (
+                  <Alert color="yellow" title="Link a family member first">
+                    Register a child account, then add them via the family
+                    members API / settings before creating a family portfolio.
+                  </Alert>
+                )}
+
+                <Group position="right" mt="xl">
                   <Button
                     type="submit"
-                    leftSection={<IconPlus size={16} />}
+                    leftIcon={<IconPlus size={16} />}
                     loading={loading}
-                    loaderProps={{ type: 'dots' }}
                     color="blue"
                     size="md"
+                    disabled={
+                      formData.isFamilyPortfolio && !formData.familyMemberId
+                    }
                   >
                     Create Portfolio
                   </Button>

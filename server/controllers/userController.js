@@ -1,17 +1,20 @@
 ﻿const User = require('../models/User');
 const logger = require('../utils/logger');
+const { sendError, sendSuccess } = require('../utils/apiResponse');
 
 exports.getFamilyMembers = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).populate('familyMembers', 'name email');
+    const user = await User.findById(req.user.id).populate('familyMembers', 'name email role');
     if (!user) {
-      return res.status(404).json({ msg: 'User not found' });
+      return sendError(res, 404, 'USER_NOT_FOUND', 'User not found');
     }
 
-    res.json(user.familyMembers);
+    return sendSuccess(res, user.familyMembers);
   } catch (err) {
-    logger.error(`Get family members error: ${err.message}`);
-    res.status(500).send('Server error');
+    logger.error(`Get family members error: ${err.message}`, {
+      requestId: res.locals.requestId,
+    });
+    return sendError(res, 500, 'INTERNAL_ERROR', 'Server error');
   }
 };
 
@@ -19,56 +22,78 @@ exports.addFamilyMember = async (req, res) => {
   const { email } = req.body;
 
   try {
-    // Check if the family member exists
     const familyMember = await User.findOne({ email, role: 'child' });
     if (!familyMember) {
-      return res.status(404).json({ msg: 'User not found or not a child account' });
+      return sendError(
+        res,
+        404,
+        'FAMILY_MEMBER_NOT_FOUND',
+        'User not found or not a child account'
+      );
     }
 
-    // Check if already a family member
     const user = await User.findById(req.user.id);
-    if (user.familyMembers.includes(familyMember._id)) {
-      return res.status(400).json({ msg: 'User is already a family member' });
+    if (!user) {
+      return sendError(res, 404, 'USER_NOT_FOUND', 'User not found');
     }
 
-    user.familyMembers.push(familyMember._id);
-    await user.save();
+    if (user._id.equals(familyMember._id)) {
+      return sendError(res, 400, 'INVALID_FAMILY_MEMBER', 'Cannot add yourself as a family member');
+    }
 
-    res.json({ msg: 'Family member added successfully' });
+    if (user.familyMembers.some((id) => id.equals(familyMember._id))) {
+      return sendError(res, 400, 'ALREADY_FAMILY_MEMBER', 'User is already a family member');
+    }
+
+    await User.updateOne(
+      { _id: user._id },
+      { $addToSet: { familyMembers: familyMember._id } }
+    );
+
+    return sendSuccess(res, { msg: 'Family member added successfully' });
   } catch (err) {
-    logger.error(`Add family member error: ${err.message}`);
-    res.status(500).send('Server error');
+    logger.error(`Add family member error: ${err.message}`, {
+      requestId: res.locals.requestId,
+    });
+    return sendError(res, 500, 'INTERNAL_ERROR', 'Server error');
   }
 };
 
 exports.removeFamilyMember = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
-    user.familyMembers = user.familyMembers.filter(
-      memberId => memberId.toString() !== req.params.id
+    const result = await User.updateOne(
+      { _id: req.user.id },
+      { $pull: { familyMembers: req.params.id } }
     );
-    await user.save();
 
-    res.json({ msg: 'Family member removed successfully' });
+    if (result.matchedCount === 0) {
+      return sendError(res, 404, 'USER_NOT_FOUND', 'User not found');
+    }
+
+    return sendSuccess(res, { msg: 'Family member removed successfully' });
   } catch (err) {
-    logger.error(`Remove family member error: ${err.message}`);
-    res.status(500).send('Server error');
+    logger.error(`Remove family member error: ${err.message}`, {
+      requestId: res.locals.requestId,
+    });
+    return sendError(res, 500, 'INTERNAL_ERROR', 'Server error');
   }
 };
 
 exports.getUserProfile = async (req, res) => {
   try {
-    // console.log(req);
     const user = await User.findById(req.user.id)
       .select('-password -__v')
-      .populate('familyMembers', 'name email'); 
+      .populate('familyMembers', 'name email role');
+
     if (!user) {
-      return res.status(404).json({ msg: 'User not found' });
+      return sendError(res, 404, 'USER_NOT_FOUND', 'User not found');
     }
-    res.json(user);
-  }
-  catch (err) {
-    logger.error(`Get user profile error: ${err.message}`);
-    res.status(500).send('Server error');
+
+    return sendSuccess(res, user);
+  } catch (err) {
+    logger.error(`Get user profile error: ${err.message}`, {
+      requestId: res.locals.requestId,
+    });
+    return sendError(res, 500, 'INTERNAL_ERROR', 'Server error');
   }
 };

@@ -38,62 +38,139 @@ export default function PerformanceChart({ portfolio }) {
   useEffect(() => {
     if (!portfolio?.assets?.length) return;
 
-    const allDatesSet = new Set();
-    const assetHistories = [];
+    const transactions = Array.isArray(portfolio.transactions)
+      ? [...portfolio.transactions].sort(
+          (a, b) => new Date(a.date) - new Date(b.date)
+        )
+      : [];
 
-    // Step 1: Collect all dates and map price history per asset
+    const allDatesSet = new Set();
+    const priceMapBySymbol = {};
+
+    // Step 1: Collect all dates and map price history per symbol
     portfolio.assets.forEach((asset) => {
-      const priceMap = {};
-      asset.priceHistory.forEach(({ date, price }) => {
+      const symbol = asset.symbol;
+      if (!priceMapBySymbol[symbol]) priceMapBySymbol[symbol] = {};
+      (asset.priceHistory || []).forEach(({ date, price }) => {
         const dateKey = new Date(date).toISOString().split("T")[0];
-        priceMap[dateKey] = price;
+        priceMapBySymbol[symbol][dateKey] = price;
         allDatesSet.add(dateKey);
       });
-      assetHistories.push({ quantity: asset.quantity, priceMap });
+    });
+
+    // Transaction dates matter too: value/invested can change on those days
+    transactions.forEach((t) => {
+      if (t?.date) allDatesSet.add(new Date(t.date).toISOString().split("T")[0]);
     });
 
     // Step 2: Sort all unique dates
     const allDates = Array.from(allDatesSet).sort(
       (a, b) => new Date(a) - new Date(b)
     );
+    if (!allDates.length) return;
 
-    // Step 3: Carry forward prices and calculate portfolio value
-    const dateValueMap = {};
-    allDates.forEach((date) => {
-      let totalValue = 0;
-      assetHistories.forEach(({ quantity, priceMap }) => {
-        // Find last known price up to this date
-        const availableDates = Object.keys(priceMap).filter(
-          (d) => new Date(d) <= new Date(date)
-        );
-        if (availableDates.length > 0) {
-          const lastKnownDate = availableDates.sort(
-            (a, b) => new Date(b) - new Date(a)
-          )[0];
-          totalValue += quantity * priceMap[lastKnownDate];
+    const carriedPrice = (symbol, date) => {
+      const priceMap = priceMapBySymbol[symbol];
+      if (!priceMap) return null;
+      let last = null;
+      for (const d of Object.keys(priceMap)) {
+        if (new Date(d) <= new Date(date) && (!last || new Date(d) > new Date(last))) {
+          last = d;
         }
+      }
+      return last ? priceMap[last] : null;
+    };
+
+    const labels = [];
+    const values = [];
+    const investedSeries = [];
+
+    if (transactions.length > 0) {
+      // Ledger mode: replay transactions so deposits/withdrawals move the
+      // "Net Invested" line instead of looking like gains/losses.
+      let txnIndex = 0;
+      const qtyBySymbol = {};
+      let netInvested = 0;
+
+      allDates.forEach((date) => {
+        const dayEnd = new Date(date);
+        dayEnd.setHours(23, 59, 59, 999);
+
+        while (
+          txnIndex < transactions.length &&
+          new Date(transactions[txnIndex].date) <= dayEnd
+        ) {
+          const t = transactions[txnIndex];
+          const signedQty = t.type === "SELL" ? -t.quantity : t.quantity;
+          const signedAmount = t.type === "SELL" ? -1 : 1;
+          qtyBySymbol[t.symbol] = (qtyBySymbol[t.symbol] || 0) + signedQty;
+          netInvested += signedAmount * t.quantity * t.price;
+          txnIndex += 1;
+        }
+
+        let totalValue = 0;
+        Object.entries(qtyBySymbol).forEach(([symbol, qty]) => {
+          if (qty <= 0) return;
+          const price = carriedPrice(symbol, date);
+          if (price) totalValue += qty * price;
+        });
+
+        labels.push(date);
+        values.push(totalValue);
+        investedSeries.push(netInvested);
       });
-      dateValueMap[date] = totalValue;
-    });
+    } else {
+      // Legacy mode (no ledger): value of current holdings over time
+      const assetHistories = portfolio.assets.map((asset) => ({
+        quantity: asset.quantity,
+        priceMap: priceMapBySymbol[asset.symbol] || {},
+      }));
 
-    // Step 4: Set chart data
-    const labels = Object.keys(dateValueMap);
-    const values = labels.map((d) => dateValueMap[d]);
+      allDates.forEach((date) => {
+        let totalValue = 0;
+        assetHistories.forEach(({ quantity, priceMap }) => {
+          const availableDates = Object.keys(priceMap).filter(
+            (d) => new Date(d) <= new Date(date)
+          );
+          if (availableDates.length > 0) {
+            const lastKnownDate = availableDates.sort(
+              (a, b) => new Date(b) - new Date(a)
+            )[0];
+            totalValue += quantity * priceMap[lastKnownDate];
+          }
+        });
+        labels.push(date);
+        values.push(totalValue);
+      });
+    }
 
-    setChartData({
-      labels,
-      datasets: [
-        {
-          label: "Portfolio Value",
-          data: values,
-          borderColor: "rgb(59, 130, 246)",
-          backgroundColor: "rgba(59, 130, 246, 0.3)",
-          tension: 0.3,
-          fill: true,
-          pointRadius: 2,
-        },
-      ],
-    });
+    const datasets = [
+      {
+        label: "Portfolio Value",
+        data: values,
+        borderColor: "rgb(59, 130, 246)",
+        backgroundColor: "rgba(59, 130, 246, 0.3)",
+        tension: 0.3,
+        fill: investedSeries.length === 0,
+        pointRadius: 2,
+      },
+    ];
+
+    if (investedSeries.length > 0) {
+      datasets.push({
+        label: "Net Invested",
+        data: investedSeries,
+        borderColor: "rgb(148, 163, 184)",
+        backgroundColor: "transparent",
+        borderDash: [6, 4],
+        tension: 0,
+        fill: false,
+        pointRadius: 0,
+        stepped: true,
+      });
+    }
+
+    setChartData({ labels, datasets });
   }, [portfolio]);
 
   return (

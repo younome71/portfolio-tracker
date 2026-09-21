@@ -7,74 +7,27 @@
   Stack,
   Title,
   rem,
-  Progress,
-  Tooltip,
-} from "@mantine/core";
-import { useRouter } from "next/router";
-import Link from "next/link";
+} from '@mantine/core';
+import { useRouter } from 'next/router';
+import Link from 'next/link';
 import {
   IconPlus,
   IconArrowUpRight,
   IconArrowDownRight,
-} from "@tabler/icons-react";
+} from '@tabler/icons-react';
+import {
+  calculateTotalValue,
+  calculateDayChange,
+  calculateNetInvested,
+  calculateOverallPnl,
+  formatCurrency,
+  groupAssetsBySymbol,
+  allocColorByIndex,
+} from '../utils/portfolioMath';
+import ClientProgressChart from './ClientProgressChart';
 
 export default function PortfolioSummary({ title, portfolios, isFamily }) {
   const router = useRouter();
-
-  const calculateTotalValue = (portfolio) => {
-    return portfolio.assets.reduce((total, asset) => {
-      return total + asset.quantity * asset.currentPrice;
-    }, 0);
-  };
-
-  const calculateDayChange = (portfolio) => {
-    if (portfolio.assets.length === 0) return 0;
-
-    const totalValue = calculateTotalValue(portfolio);
-    let weightedChange = 0;
-
-    portfolio.assets.forEach((asset) => {
-      if (asset.priceHistory.length >= 2) {
-        const yesterdayPrice =
-          asset.priceHistory[asset.priceHistory.length - 2].price;
-        const assetChange =
-          ((asset.currentPrice - yesterdayPrice) / yesterdayPrice) * 100;
-        const assetWeight = (asset.quantity * asset.currentPrice) / totalValue;
-        weightedChange += assetChange * assetWeight;
-      }
-    });
-
-    return weightedChange;
-  };
-
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(value);
-  };
-
-  const groupAssetsBySymbol = (assets) => {
-    const grouped = {};
-
-    for (const asset of assets) {
-      const baseSymbol = asset.symbol.split(".")[0];
-      const value = asset.quantity * asset.currentPrice;
-
-      if (!grouped[baseSymbol]) {
-        grouped[baseSymbol] = {
-          symbol: baseSymbol,
-          value,
-        };
-      } else {
-        grouped[baseSymbol].value += value;
-      }
-    }
-
-    return Object.values(grouped).sort((a, b) => b.value - a.value);
-  };
 
   return (
     <Card withBorder radius="md" p="lg" shadow="sm">
@@ -95,7 +48,7 @@ export default function PortfolioSummary({ title, portfolios, isFamily }) {
 
       {portfolios.length === 0 ? (
         <Text color="dimmed" align="center" py="lg">
-          No portfolios found. Create your first portfolio to get started.
+          No portfolios yet. Create your first portfolio to get started.
         </Text>
       ) : (
         <Stack spacing="sm">
@@ -103,6 +56,12 @@ export default function PortfolioSummary({ title, portfolios, isFamily }) {
             const totalValue = calculateTotalValue(portfolio);
             const dayChange = calculateDayChange(portfolio);
             const isPositive = dayChange >= 0;
+            const netInvested = calculateNetInvested(portfolio);
+            const overallPnl = calculateOverallPnl(portfolio);
+            const overallPnlPct =
+              netInvested > 0 ? (overallPnl / netInvested) * 100 : 0;
+            const isOverallProfit = overallPnl >= 0;
+            const grouped = groupAssetsBySymbol(portfolio.assets || []);
 
             return (
               <Card
@@ -110,13 +69,17 @@ export default function PortfolioSummary({ title, portfolios, isFamily }) {
                 withBorder
                 radius="md"
                 p="md"
-                component="a"
+                component="button"
+                type="button"
                 onClick={() => router.push(`/portfolio/${portfolio._id}`)}
                 sx={(theme) => ({
-                  cursor: "pointer",
-                  "&:hover": {
+                  cursor: 'pointer',
+                  width: '100%',
+                  textAlign: 'left',
+                  background: 'transparent',
+                  '&:hover': {
                     backgroundColor:
-                      theme.colorScheme === "dark"
+                      theme.colorScheme === 'dark'
                         ? theme.colors.dark[6]
                         : theme.colors.gray[0],
                   },
@@ -134,7 +97,7 @@ export default function PortfolioSummary({ title, portfolios, isFamily }) {
                 <Group position="apart" mt="xs">
                   <Badge
                     variant="light"
-                    color={isPositive ? "teal" : "red"}
+                    color={isPositive ? 'teal' : 'red'}
                     leftSection={
                       isPositive ? (
                         <IconArrowUpRight size={rem(14)} />
@@ -146,28 +109,35 @@ export default function PortfolioSummary({ title, portfolios, isFamily }) {
                     {dayChange.toFixed(2)}% today
                   </Badge>
 
+                  <Badge
+                    variant="light"
+                    color={isOverallProfit ? 'teal' : 'red'}
+                    leftSection={
+                      isOverallProfit ? (
+                        <IconArrowUpRight size={rem(14)} />
+                      ) : (
+                        <IconArrowDownRight size={rem(14)} />
+                      )
+                    }
+                  >
+                    {overallPnlPct.toFixed(2)}% overall
+                  </Badge>
+
                   <Text size="sm" color="dimmed">
-                    {groupAssetsBySymbol(portfolio.assets).length}{" "}
-                    {groupAssetsBySymbol(portfolio.assets).length === 1
-                      ? "asset"
-                      : "assets"}
+                    {grouped.length} {grouped.length === 1 ? 'asset' : 'assets'}
                   </Text>
                 </Group>
 
-                {portfolio.assets.length > 0 && (
-                  <Progress
-                    sections={groupAssetsBySymbol(portfolio.assets).map(
-                      (groupedAsset) => ({
-                        value: (groupedAsset.value / totalValue) * 100,
-                        color: `hsl(${Math.random() * 360}, 70%, 50%)`,
-                        tooltip: `${groupedAsset.symbol}: ${(
-                          (groupedAsset.value / totalValue) *
-                          100
-                        ).toFixed(1)}%`,
-                      })
-                    )}
-                    size="sm"
-                    mt="md"
+                {grouped.length > 0 && totalValue > 0 && (
+                  <ClientProgressChart
+                    sections={grouped.map((groupedAsset, index) => ({
+                      value: (groupedAsset.value / totalValue) * 100,
+                      color: allocColorByIndex(index),
+                      tooltip: `${groupedAsset.symbol.split('.')[0]}: ${(
+                        (groupedAsset.value / totalValue) *
+                        100
+                      ).toFixed(1)}%`,
+                    }))}
                   />
                 )}
               </Card>

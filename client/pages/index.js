@@ -48,28 +48,29 @@ function getUserInitials(name) {
 export default function Home() {
   const router = useRouter();
   const dispatch = useDispatch();
-  const { isAuthenticated, user } = useSelector((state) => state.auth);
+  const { isAuthenticated, user, hydrated, loading: authLoading } = useSelector(
+    (state) => state.auth
+  );
   const { portfolios, loading, error } = useSelector(
     (state) => state.portfolio
   );
   const [profileUser, setProfileUser] = useState(null);
 
   useEffect(() => {
+    if (!hydrated || authLoading) return;
+
     if (!isAuthenticated) {
-      router.push("/auth/login");
-    } else {
-      console.log("Fetching portfolios for user:", user.user);
-      dispatch(fetchPortfolios());
-      dispatch(fetchUserProfile(user.user.id)).then((res) => {
-        if (res.payload) {
-          console.log("Fetched user profile:", res.payload);
-          setProfileUser(res.payload);
-        } else {
-          console.error("Failed to fetch user profile");
-        }
-      });
+      router.replace("/auth/login");
+      return;
     }
-  }, [isAuthenticated, user, dispatch, router]);
+
+    dispatch(fetchPortfolios());
+    dispatch(fetchUserProfile()).then((res) => {
+      if (res.payload && !res.error) {
+        setProfileUser(res.payload);
+      }
+    });
+  }, [isAuthenticated, hydrated, authLoading, dispatch, router]);
 
   // Calculate combined portfolio stats
   const allPortfolios = [
@@ -156,12 +157,7 @@ export default function Home() {
     .slice(-3)
     .reverse();
 
-  useEffect(() => {
-    console.log("All Portfolios:", allPortfolios);
-    console.log("Portfolio: ", portfolios);
-  }, [allPortfolios, portfolios]);
-
-  if (!isAuthenticated || loading) {
+  if (!hydrated || authLoading || !isAuthenticated || loading) {
     return (
       <Layout>
         <Container size="xl">
@@ -179,7 +175,7 @@ export default function Home() {
         <Group position="apart" align="center" mb="xl">
           <div>
             <Title order={1} weight={600}>
-              Welcome back, {profileUser?.name || user?.name || "User"}!
+              Welcome back, {profileUser?.name || user?.name || user?.email || "User"}!
             </Title>
             <Text color="dimmed" size="sm">
               Here&apos;s your financial dashboard
@@ -499,7 +495,7 @@ export default function Home() {
 
         {/* Individual Portfolio Sections */}
         <Grid gutter="xl">
-          <Grid.Col span={12} md={user?.role === "parent" ? 6 : 12}>
+          <Grid.Col span={12} md={(user?.role || profileUser?.role) === "parent" ? 6 : 12}>
             <Card withBorder radius="md" shadow="xs" p="lg">
               <Group position="apart" mb="md">
                 <Group>
@@ -529,7 +525,7 @@ export default function Home() {
             </Card>
           </Grid.Col>
 
-          {user?.role === "parent" && (
+          {(user?.role || profileUser?.role) === "parent" && (
             <Grid.Col span={12} md={6}>
               <Card withBorder radius="md" shadow="xs" p="lg">
                 <Group position="apart" mb="md">
@@ -582,7 +578,7 @@ export default function Home() {
               </Avatar>
             }
           >
-            {user?.role === "parent" ? "Family Manager" : "Investor"}
+            {(user?.role || profileUser?.role) === "parent" ? "Family Manager" : "Investor"}
           </Badge>
         </Group>
       </Container>

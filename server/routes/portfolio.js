@@ -1,32 +1,59 @@
 ﻿const express = require('express');
 const router = express.Router();
 const { auth } = require('../middlewares/auth');
-const { validatePortfolio, validateAsset, handleValidationErrors } = require('../utils/validation');
+const {
+  validatePortfolio,
+  validatePortfolioUpdate,
+  validateAsset,
+  validateSell,
+  handleValidationErrors,
+} = require('../utils/validation');
 const portfolioController = require('../controllers/portfolioController');
 
-// @route   GET api/portfolio
-// @desc    Get all portfolios
-// @access  Private
 router.get('/', auth, portfolioController.getPortfolios);
 
-// @route   POST api/portfolio
-// @desc    Create new portfolio
-// @access  Private
-router.post('/', auth, validatePortfolio, handleValidationErrors, portfolioController.createPortfolio);
+router.post(
+  '/',
+  auth,
+  validatePortfolio,
+  handleValidationErrors,
+  portfolioController.createPortfolio
+);
 
-// @route   POST api/portfolio/:portfolioId/assets
-// @desc    Add asset to portfolio
-// @access  Private
-router.post('/:portfolioId/assets', auth, validateAsset, handleValidationErrors, portfolioController.addAsset);
+router.patch(
+  '/:portfolioId',
+  auth,
+  validatePortfolioUpdate,
+  handleValidationErrors,
+  portfolioController.updatePortfolio
+);
 
-// @route   DELETE api/portfolio/:portfolioId/assets/:assetId
-// @desc    Remove asset from portfolio
-// @access  Private
-router.delete('/:portfolioId/assets/:assetId', auth, portfolioController.removeAsset);
+router.post(
+  '/:portfolioId/assets',
+  auth,
+  validateAsset,
+  handleValidationErrors,
+  portfolioController.addAsset
+);
 
-// @route   GET api/portfolio/:portfolioId/performance
-// @desc    Get portfolio performance
-// @access  Private
-router.get('/:portfolioId/performance', auth, portfolioController.getPortfolioPerformance);
+router.post(
+  '/:portfolioId/sell',
+  auth,
+  validateSell,
+  handleValidationErrors,
+  portfolioController.sellAsset
+);
+
+router.delete(
+  '/:portfolioId/assets/:assetId',
+  auth,
+  portfolioController.removeAsset
+);
+
+router.get(
+  '/:portfolioId/performance',
+  auth,
+  portfolioController.getPortfolioPerformance
+);
 
 module.exports = router;
