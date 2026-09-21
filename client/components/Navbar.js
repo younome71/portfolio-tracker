@@ -1,6 +1,7 @@
+import { useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { useSelector, useDispatch } from 'react-redux';
-import { logout } from '../store/authSlice';
+import { logout, fetchReceivedInvites } from '../store/authSlice';
 import {
   Group,
   Text,
@@ -11,6 +12,7 @@ import {
   Drawer,
   Stack,
   Divider,
+  Badge,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import Link from 'next/link';
@@ -19,7 +21,17 @@ export default function AppHeader() {
   const router = useRouter();
   const dispatch = useDispatch();
   const [opened, { open, close }] = useDisclosure(false);
-  const { isAuthenticated, user } = useSelector((state) => state.auth);
+  const { isAuthenticated, user, receivedInvites, hydrated } = useSelector(
+    (state) => state.auth
+  );
+
+  useEffect(() => {
+    if (hydrated && isAuthenticated) {
+      dispatch(fetchReceivedInvites());
+    }
+  }, [hydrated, isAuthenticated, dispatch]);
+
+  const pendingInviteCount = (receivedInvites || []).length;
 
   const handleLogout = () => {
     dispatch(logout());
@@ -28,6 +40,14 @@ export default function AppHeader() {
   };
 
   const displayName = user?.name || user?.email || 'User';
+
+  const familyLinkStyles = {
+    root: {
+      color: 'var(--pt-ink)',
+      fontWeight: 600,
+      '&:hover': { background: 'rgba(11, 18, 32, 0.04)' },
+    },
+  };
 
   return (
     <Box component="header" className="pt-nav">
@@ -71,6 +91,23 @@ export default function AppHeader() {
         >
           {isAuthenticated ? (
             <>
+              <Button
+                component={Link}
+                href="/family"
+                variant="subtle"
+                size="sm"
+                radius="md"
+                styles={familyLinkStyles}
+                rightIcon={
+                  pendingInviteCount > 0 ? (
+                    <Badge size="sm" color="teal" variant="filled" circle>
+                      {pendingInviteCount}
+                    </Badge>
+                  ) : null
+                }
+              >
+                Family
+              </Button>
               <Group spacing="xs">
                 <Avatar
                   alt={displayName}
@@ -167,6 +204,21 @@ export default function AppHeader() {
               <Divider my="xs" />
               <Button component={Link} href="/" variant="light" onClick={close}>
                 Dashboard
+              </Button>
+              <Button
+                component={Link}
+                href="/family"
+                variant="light"
+                onClick={close}
+                rightIcon={
+                  pendingInviteCount > 0 ? (
+                    <Badge size="sm" color="teal" variant="filled" circle>
+                      {pendingInviteCount}
+                    </Badge>
+                  ) : null
+                }
+              >
+                Family
               </Button>
               <Button color="red" variant="outline" onClick={handleLogout}>
                 Log out

@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
+import Link from 'next/link';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Container,
@@ -14,6 +15,8 @@ import {
   Stack,
   Checkbox,
   rem,
+  Text,
+  Anchor,
 } from '@mantine/core';
 import { IconArrowLeft, IconPlus, IconAlertCircle, IconUsers } from '@tabler/icons-react';
 import Layout from './Layout';
@@ -155,8 +158,14 @@ export default function PortfolioForm() {
 
                 {formData.isFamilyPortfolio && !familyMembers?.length && (
                   <Alert color="yellow" title="Link a family member first">
-                    Register a child account, then add them via the family
-                    members API / settings before creating a family portfolio.
+                    <Text size="sm">
+                      Invite them from the{' '}
+                      <Anchor component={Link} href="/family" fw={600}>
+                        Family
+                      </Anchor>{' '}
+                      page. They must accept before you can create a portfolio for
+                      them.
+                    </Text>
                   </Alert>
                 )}
 

@@ -68,6 +68,104 @@ export const fetchFamilyMembers = createAsyncThunk(
   }
 );
 
+export const inviteFamilyMember = createAsyncThunk(
+  'auth/inviteFamilyMember',
+  async (email, thunkAPI) => {
+    try {
+      const response = await api.post('/user/family/invites', { email });
+      return response.data.data;
+    } catch (error) {
+      return thunkAPI.rejectWithValue(
+        getApiErrorMessage(error, 'Failed to send invite')
+      );
+    }
+  }
+);
+
+export const fetchSentInvites = createAsyncThunk(
+  'auth/fetchSentInvites',
+  async (_, thunkAPI) => {
+    try {
+      const response = await api.get('/user/family/invites/sent');
+      return response.data.data;
+    } catch (error) {
+      return thunkAPI.rejectWithValue(
+        getApiErrorMessage(error, 'Failed to load sent invites')
+      );
+    }
+  }
+);
+
+export const fetchReceivedInvites = createAsyncThunk(
+  'auth/fetchReceivedInvites',
+  async (_, thunkAPI) => {
+    try {
+      const response = await api.get('/user/family/invites/received');
+      return response.data.data;
+    } catch (error) {
+      return thunkAPI.rejectWithValue(
+        getApiErrorMessage(error, 'Failed to load invites')
+      );
+    }
+  }
+);
+
+export const acceptFamilyInvite = createAsyncThunk(
+  'auth/acceptFamilyInvite',
+  async (inviteId, thunkAPI) => {
+    try {
+      const response = await api.post(`/user/family/invites/${inviteId}/accept`);
+      return response.data.data;
+    } catch (error) {
+      return thunkAPI.rejectWithValue(
+        getApiErrorMessage(error, 'Failed to accept invite')
+      );
+    }
+  }
+);
+
+export const declineFamilyInvite = createAsyncThunk(
+  'auth/declineFamilyInvite',
+  async (inviteId, thunkAPI) => {
+    try {
+      const response = await api.post(`/user/family/invites/${inviteId}/decline`);
+      return response.data.data;
+    } catch (error) {
+      return thunkAPI.rejectWithValue(
+        getApiErrorMessage(error, 'Failed to decline invite')
+      );
+    }
+  }
+);
+
+export const cancelFamilyInvite = createAsyncThunk(
+  'auth/cancelFamilyInvite',
+  async (inviteId, thunkAPI) => {
+    try {
+      const response = await api.delete(`/user/family/invites/${inviteId}`);
+      return response.data.data;
+    } catch (error) {
+      return thunkAPI.rejectWithValue(
+        getApiErrorMessage(error, 'Failed to cancel invite')
+      );
+    }
+  }
+);
+
+export const removeFamilyMember = createAsyncThunk(
+  'auth/removeFamilyMember',
+  async (memberId, thunkAPI) => {
+    try {
+      await api.delete(`/user/family/${memberId}`);
+      return memberId;
+    } catch (error) {
+      return thunkAPI.rejectWithValue(
+        getApiErrorMessage(error, 'Failed to remove family member')
+      );
+    }
+  }
+);
+
 const initialState = {
   user: null,
   token: null,
@@ -75,6 +173,10 @@ const initialState = {
   loading: true,
   error: null,
   familyMembers: [],
+  sentInvites: [],
+  receivedInvites: [],
+  familyLoading: false,
+  familyError: null,
   hydrated: false,
 };
 
@@ -103,10 +205,14 @@ const authSlice = createSlice({
       state.loading = false;
       state.error = null;
       state.familyMembers = [];
+      state.sentInvites = [];
+      state.receivedInvites = [];
+      state.familyError = null;
       setAuthToken(null);
     },
     clearError(state) {
       state.error = null;
+      state.familyError = null;
     },
     rehydrateAuth(state) {
       const token = getAuthToken();
@@ -162,6 +268,44 @@ const authSlice = createSlice({
       })
       .addCase(fetchFamilyMembers.fulfilled, (state, action) => {
         state.familyMembers = action.payload || [];
+      })
+      .addCase(inviteFamilyMember.pending, (state) => {
+        state.familyLoading = true;
+        state.familyError = null;
+      })
+      .addCase(inviteFamilyMember.fulfilled, (state, action) => {
+        state.familyLoading = false;
+        state.sentInvites = [action.payload, ...state.sentInvites];
+      })
+      .addCase(inviteFamilyMember.rejected, (state, action) => {
+        state.familyLoading = false;
+        state.familyError = action.payload;
+      })
+      .addCase(fetchSentInvites.fulfilled, (state, action) => {
+        state.sentInvites = action.payload || [];
+      })
+      .addCase(fetchReceivedInvites.fulfilled, (state, action) => {
+        state.receivedInvites = action.payload || [];
+      })
+      .addCase(acceptFamilyInvite.fulfilled, (state, action) => {
+        const id = action.payload?.id;
+        state.receivedInvites = state.receivedInvites.filter((i) => i.id !== id);
+      })
+      .addCase(declineFamilyInvite.fulfilled, (state, action) => {
+        const id = action.payload?.id;
+        state.receivedInvites = state.receivedInvites.filter((i) => i.id !== id);
+      })
+      .addCase(cancelFamilyInvite.fulfilled, (state, action) => {
+        const id = action.payload?.id;
+        state.sentInvites = state.sentInvites.map((i) =>
+          i.id === id ? { ...i, status: 'cancelled' } : i
+        );
+      })
+      .addCase(removeFamilyMember.fulfilled, (state, action) => {
+        const memberId = String(action.payload);
+        state.familyMembers = state.familyMembers.filter(
+          (m) => String(m._id || m.id) !== memberId
+        );
       });
   },
 });

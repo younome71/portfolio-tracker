@@ -339,159 +339,163 @@ export default function Home() {
           </Card>
         </Link>
 
-        {/* Market Movers Section */}
-        <Title order={3} mb="md" weight={600}>
-          Market Movers
-        </Title>
+        {/* Market Movers — only when the user has portfolios */}
+        {allPortfolios.length > 0 && (
+          <>
+            <Title order={3} mb="md" weight={600}>
+              Market Movers
+            </Title>
 
-        <SimpleGrid
-          cols={2}
-          spacing="lg"
-          mb="xl"
-          breakpoints={[{ maxWidth: "sm", cols: 1 }]}
-        >
-          {/* Top Gainers Card */}
-          <Card withBorder shadow="sm" radius="md">
-            <Card.Section withBorder inheritPadding py="xs" bg="green.0">
-              <Group position="apart">
-                <Group spacing="xs">
-                  <IconArrowUpRight size={20} color="#40C057" />
-                  <Text weight={600} color="green.8">
-                    Top Gainers (24h)
-                  </Text>
-                </Group>
-                <Badge color="green" variant="light" radius="sm">
-                  {topGainers.length} assets
-                </Badge>
-              </Group>
-            </Card.Section>
-
-            <Box mt="md">
-              {topGainers.length === 0 ? (
-                <Text size="sm" color="dimmed" py="sm">
-                  No significant gainers today.
-                </Text>
-              ) : (
-                topGainers.map((asset, index) => (
-                  <Box
-                    key={index}
-                    py="sm"
-                    sx={(theme) => ({
-                      borderBottom:
-                        index !== topGainers.length - 1
-                          ? `1px solid ${theme.colors.gray[2]}`
-                          : "none",
-                      "&:hover": {
-                        backgroundColor: theme.colors.green[0],
-                      },
-                    })}
-                  >
-                    <Group position="apart">
-                      <Group spacing="sm">
-                        <Avatar
-                          radius="xl"
-                          size="sm"
-                          color="green"
-                          variant="light"
-                        >
-                          {asset.symbol?.slice(0, 2)}
-                        </Avatar>
-                        <div>
-                          <Text size="sm" weight={500}>
-                            {asset.name || asset.symbol.split(".")[0]}
-                          </Text>
-                        </div>
-                      </Group>
-                      <Badge
-                        color="green"
-                        variant="light"
-                        leftSection={
-                          <IconArrowUpRight
-                            size={12}
-                            style={{ marginRight: 4 }}
-                          />
-                        }
-                      >
-                        {asset.change.toFixed(2)}%
-                      </Badge>
+            <SimpleGrid
+              cols={2}
+              spacing="lg"
+              mb="xl"
+              breakpoints={[{ maxWidth: "sm", cols: 1 }]}
+            >
+              {/* Top Gainers Card */}
+              <Card withBorder shadow="sm" radius="md">
+                <Card.Section withBorder inheritPadding py="xs" bg="green.0">
+                  <Group position="apart">
+                    <Group spacing="xs">
+                      <IconArrowUpRight size={20} color="#40C057" />
+                      <Text weight={600} color="green.8">
+                        Top Gainers (24h)
+                      </Text>
                     </Group>
-                  </Box>
-                ))
-              )}
-            </Box>
-          </Card>
+                    <Badge color="green" variant="light" radius="sm">
+                      {topGainers.length} assets
+                    </Badge>
+                  </Group>
+                </Card.Section>
 
-          {/* Top Losers Card */}
-          <Card withBorder shadow="sm" radius="md">
-            <Card.Section withBorder inheritPadding py="xs" bg="red.0">
-              <Group position="apart">
-                <Group spacing="xs">
-                  <IconArrowDownRight size={20} color="#FA5252" />
-                  <Text weight={600} color="red.8">
-                    Top Losers (24h)
-                  </Text>
-                </Group>
-                <Badge color="red" variant="light" radius="sm">
-                  {topLosers.length} assets
-                </Badge>
-              </Group>
-            </Card.Section>
-
-            <Box mt="md">
-              {topLosers.length === 0 ? (
-                <Text size="sm" color="dimmed" py="sm">
-                  No significant losers today.
-                </Text>
-              ) : (
-                topLosers.map((asset, index) => (
-                  <Box
-                    key={index}
-                    py="sm"
-                    sx={(theme) => ({
-                      borderBottom:
-                        index !== topLosers.length - 1
-                          ? `1px solid ${theme.colors.gray[2]}`
-                          : "none",
-                      "&:hover": {
-                        backgroundColor: theme.colors.red[0],
-                      },
-                    })}
-                  >
-                    <Group position="apart">
-                      <Group spacing="sm">
-                        <Avatar
-                          radius="xl"
-                          size="sm"
-                          color="red"
-                          variant="light"
-                        >
-                          {asset.symbol?.slice(0, 2)}
-                        </Avatar>
-                        <div>
-                          <Text size="sm" weight={500}>
-                            {asset.name || asset.symbol.split(".")[0]}
-                          </Text>
-                        </div>
-                      </Group>
-                      <Badge
-                        color="red"
-                        variant="light"
-                        leftSection={
-                          <IconArrowDownRight
-                            size={12}
-                            style={{ marginRight: 4 }}
-                          />
-                        }
+                <Box mt="md">
+                  {topGainers.length === 0 ? (
+                    <Text size="sm" color="dimmed" py="sm">
+                      No significant gainers today.
+                    </Text>
+                  ) : (
+                    topGainers.map((asset, index) => (
+                      <Box
+                        key={index}
+                        py="sm"
+                        sx={(theme) => ({
+                          borderBottom:
+                            index !== topGainers.length - 1
+                              ? `1px solid ${theme.colors.gray[2]}`
+                              : "none",
+                          "&:hover": {
+                            backgroundColor: theme.colors.green[0],
+                          },
+                        })}
                       >
-                        {Math.abs(asset.change).toFixed(2)}%
-                      </Badge>
+                        <Group position="apart">
+                          <Group spacing="sm">
+                            <Avatar
+                              radius="xl"
+                              size="sm"
+                              color="green"
+                              variant="light"
+                            >
+                              {asset.symbol?.slice(0, 2)}
+                            </Avatar>
+                            <div>
+                              <Text size="sm" weight={500}>
+                                {asset.name || asset.symbol.split(".")[0]}
+                              </Text>
+                            </div>
+                          </Group>
+                          <Badge
+                            color="green"
+                            variant="light"
+                            leftSection={
+                              <IconArrowUpRight
+                                size={12}
+                                style={{ marginRight: 4 }}
+                              />
+                            }
+                          >
+                            {asset.change.toFixed(2)}%
+                          </Badge>
+                        </Group>
+                      </Box>
+                    ))
+                  )}
+                </Box>
+              </Card>
+
+              {/* Top Losers Card */}
+              <Card withBorder shadow="sm" radius="md">
+                <Card.Section withBorder inheritPadding py="xs" bg="red.0">
+                  <Group position="apart">
+                    <Group spacing="xs">
+                      <IconArrowDownRight size={20} color="#FA5252" />
+                      <Text weight={600} color="red.8">
+                        Top Losers (24h)
+                      </Text>
                     </Group>
-                  </Box>
-                ))
-              )}
-            </Box>
-          </Card>
-        </SimpleGrid>
+                    <Badge color="red" variant="light" radius="sm">
+                      {topLosers.length} assets
+                    </Badge>
+                  </Group>
+                </Card.Section>
+
+                <Box mt="md">
+                  {topLosers.length === 0 ? (
+                    <Text size="sm" color="dimmed" py="sm">
+                      No significant losers today.
+                    </Text>
+                  ) : (
+                    topLosers.map((asset, index) => (
+                      <Box
+                        key={index}
+                        py="sm"
+                        sx={(theme) => ({
+                          borderBottom:
+                            index !== topLosers.length - 1
+                              ? `1px solid ${theme.colors.gray[2]}`
+                              : "none",
+                          "&:hover": {
+                            backgroundColor: theme.colors.red[0],
+                          },
+                        })}
+                      >
+                        <Group position="apart">
+                          <Group spacing="sm">
+                            <Avatar
+                              radius="xl"
+                              size="sm"
+                              color="red"
+                              variant="light"
+                            >
+                              {asset.symbol?.slice(0, 2)}
+                            </Avatar>
+                            <div>
+                              <Text size="sm" weight={500}>
+                                {asset.name || asset.symbol.split(".")[0]}
+                              </Text>
+                            </div>
+                          </Group>
+                          <Badge
+                            color="red"
+                            variant="light"
+                            leftSection={
+                              <IconArrowDownRight
+                                size={12}
+                                style={{ marginRight: 4 }}
+                              />
+                            }
+                          >
+                            {Math.abs(asset.change).toFixed(2)}%
+                          </Badge>
+                        </Group>
+                      </Box>
+                    ))
+                  )}
+                </Box>
+              </Card>
+            </SimpleGrid>
+          </>
+        )}
 
         {/* Individual Portfolio Sections */}
         <Grid gutter="xl">
