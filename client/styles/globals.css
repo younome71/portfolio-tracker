@@ -1096,3 +1096,8 @@ h4,
   opacity: 0;
   animation: pt-fade-in 0.9s ease-out 0.5s forwards;
 }
+
+.pt-past-empty {
+  padding: 1.75rem 1rem;
+  text-align: center;
+}

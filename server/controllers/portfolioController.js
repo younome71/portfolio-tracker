@@ -213,6 +213,21 @@ function computePortfolioMetrics(portfolio) {
     ? calculateXirr(buildCashFlows(transactions, totalValue))
     : null;
 
+  const pastTrades = (Array.isArray(portfolio.pastTrades)
+    ? portfolio.pastTrades
+    : []
+  )
+    .map((trade) => ({
+      _id: trade._id ? trade._id.toString() : undefined,
+      name: trade.name || '',
+      symbol: trade.symbol || '',
+      quantity: Number(trade.quantity) || 0,
+      purchasePrice: Number(trade.purchasePrice) || 0,
+      sellPrice: Number(trade.sellPrice) || 0,
+      soldAt: trade.soldAt || trade.createdAt || null,
+    }))
+    .sort((a, b) => new Date(b.soldAt || 0) - new Date(a.soldAt || 0));
+
   return {
     portfolio: portfolio.name,
     name: portfolio.name,
@@ -234,6 +249,7 @@ function computePortfolioMetrics(portfolio) {
     _id: portfolio._id.toString(),
     assets,
     transactions,
+    pastTrades,
   };
 }
 
@@ -646,17 +662,31 @@ exports.sellAsset = async (req, res) => {
       );
 
     let remaining = sellQuantity;
+    let costBasis = 0;
+    let tradeName = '';
     const removedIds = [];
     for (const lot of sortedLots) {
       if (remaining <= 1e-12) break;
+      if (!tradeName && lot.name) tradeName = String(lot.name).trim();
       const lotQty = Number(lot.quantity) || 0;
+      const lotAvg = Number(lot.averagePrice) || 0;
       if (lotQty <= remaining + 1e-9) {
+        costBasis += lotQty * lotAvg;
         remaining -= lotQty;
         removedIds.push(lot._id);
       } else {
+        costBasis += remaining * lotAvg;
         lot.quantity = lotQty - remaining;
         remaining = 0;
       }
+    }
+
+    const purchasePrice =
+      sellQuantity > 0 ? costBasis / sellQuantity : 0;
+    if (!tradeName) {
+      tradeName = storedSymbol.includes('.')
+        ? storedSymbol.split('.')[0]
+        : storedSymbol;
     }
 
     portfolio.assets = portfolio.assets.filter(
@@ -668,6 +698,17 @@ exports.sellAsset = async (req, res) => {
       quantity: sellQuantity,
       price: sellPrice,
       date: new Date(),
+    });
+    if (!Array.isArray(portfolio.pastTrades)) {
+      portfolio.pastTrades = [];
+    }
+    portfolio.pastTrades.push({
+      name: tradeName,
+      symbol: storedSymbol,
+      quantity: sellQuantity,
+      purchasePrice,
+      sellPrice,
+      soldAt: new Date(),
     });
 
     await portfolio.save();

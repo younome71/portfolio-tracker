@@ -92,6 +92,45 @@ const TransactionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+/** Closed round-trip recorded automatically on sell/redeem. */
+const PastTradeSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      trim: true,
+      maxlength: 100,
+      default: '',
+    },
+    symbol: {
+      type: String,
+      required: true,
+      uppercase: true,
+      trim: true,
+      maxlength: 32,
+    },
+    quantity: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    purchasePrice: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    sellPrice: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    soldAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  { timestamps: true }
+);
+
 const PortfolioSchema = new mongoose.Schema(
   {
     owner: {
@@ -119,6 +158,7 @@ const PortfolioSchema = new mongoose.Schema(
     },
     assets: [AssetSchema],
     transactions: [TransactionSchema],
+    pastTrades: [PastTradeSchema],
   },
   { timestamps: true }
 );

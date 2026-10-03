@@ -27,6 +27,7 @@ import {
 } from "@tabler/icons-react";
 import Layout from "../../components/Layout";
 import AssetTable from "../../components/AssetTable";
+import PastTradesTable from "../../components/PastTradesTable";
 import PerformanceChart from "../../components/PerformanceChart";
 import AssetPerformanceChart from "../../components/AssetPerformanceChart";
 import IndividualPortfolioSummary from "@/components/IndividualPortfolioSummary";
@@ -200,6 +201,20 @@ export default function PortfolioDetail() {
                 onViewPerformance={handleViewAssetPerformance}
                 canEdit={canManage}
               />
+            </div>
+          </div>
+
+          <div className="pt-holdings-section">
+            <div className="pt-holdings-section-head">
+              <div>
+                <h2 className="pt-holdings-section-title">Past Trades</h2>
+                <p className="pt-holdings-section-sub">
+                  Closed sells · purchase vs sell price
+                </p>
+              </div>
+            </div>
+            <div style={{ padding: "0.85rem" }}>
+              <PastTradesTable pastTrades={currentPortfolio.pastTrades} />
             </div>
           </div>
         </Stack>
