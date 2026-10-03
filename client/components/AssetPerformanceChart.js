@@ -85,7 +85,10 @@ export default function AssetPerformanceChart({ portfolio, assetSymbol }) {
       const assetData = [];
 
       for (const asset of matchingAssets) {
-        const purchaseDate = safeParseDate(asset.priceHistory?.[0]?.date);
+        const purchaseDate =
+          safeParseDate(asset.purchaseDate) ||
+          safeParseDate(asset.createdAt) ||
+          safeParseDate(asset.priceHistory?.[0]?.date);
 
         if (!purchaseDate) {
           console.warn(
@@ -96,8 +99,11 @@ export default function AssetPerformanceChart({ portfolio, assetSymbol }) {
 
         const priceMap = {};
         let hasValidPrices = false;
+        const avg = Number(asset.averagePrice);
 
-        for (const { date, price } of asset.priceHistory) {
+        for (const { date, price } of asset.priceHistory || []) {
+          const n = Number(price);
+          if (!Number.isFinite(n) || n <= 0) continue;
           const priceDate = safeParseDate(date);
           if (!priceDate) {
             console.warn(
@@ -107,9 +113,19 @@ export default function AssetPerformanceChart({ portfolio, assetSymbol }) {
           }
 
           const dateKey = priceDate.toISOString().split("T")[0];
-          priceMap[dateKey] = price;
+          priceMap[dateKey] = n;
           allDatesSet.add(dateKey);
           hasValidPrices = true;
+        }
+
+        // Seed cost on purchase date so the series doesn't start at ₹0
+        if (Number.isFinite(avg) && avg > 0) {
+          const buyKey = purchaseDate.toISOString().split("T")[0];
+          if (priceMap[buyKey] == null) {
+            priceMap[buyKey] = avg;
+            allDatesSet.add(buyKey);
+            hasValidPrices = true;
+          }
         }
 
         if (hasValidPrices) {
@@ -117,6 +133,7 @@ export default function AssetPerformanceChart({ portfolio, assetSymbol }) {
             purchaseDate: purchaseDate.toISOString().split("T")[0],
             quantity: asset.quantity,
             priceMap,
+            cost: Number.isFinite(avg) && avg > 0 ? avg : null,
           });
         }
       }
@@ -132,7 +149,7 @@ export default function AssetPerformanceChart({ portfolio, assetSymbol }) {
       const dateValueMap = {};
       allDates.forEach((date) => {
         let totalValue = 0;
-        assetData.forEach(({ quantity, priceMap }) => {
+        assetData.forEach(({ quantity, priceMap, cost }) => {
           const availableDates = Object.keys(priceMap).filter(
             (d) => new Date(d) <= new Date(date)
           );
@@ -141,6 +158,8 @@ export default function AssetPerformanceChart({ portfolio, assetSymbol }) {
               (a, b) => new Date(b) - new Date(a)
             )[0];
             totalValue += quantity * priceMap[lastKnownDate];
+          } else if (cost) {
+            totalValue += quantity * cost;
           }
         });
         dateValueMap[date] = totalValue;

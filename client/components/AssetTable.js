@@ -39,6 +39,7 @@ import {
   expectedMaturityValue,
   daysUntil,
 } from "../utils/fixedIncome";
+import { isPriceAvailable } from "../utils/portfolioMath";
 
 const TYPE_LABEL = {
   EQUITY: "Equity",
@@ -125,12 +126,17 @@ export default function AssetTable({ portfolio, canEdit = true }) {
   function calculateGroupTotals(assets) {
     return assets.reduce(
       (acc, asset) => {
-        acc.totalQuantity += asset.quantity;
-        acc.totalValue += asset.quantity * asset.currentPrice;
-        acc.totalInvestment += asset.quantity * asset.averagePrice;
+        const qty = Number(asset.quantity) || 0;
+        const avg = Number(asset.averagePrice) || 0;
+        acc.totalQuantity += qty;
+        acc.totalInvestment += qty * avg;
+        if (isPriceAvailable(asset)) {
+          acc.totalValue += qty * Number(asset.currentPrice);
+          acc.pricedQuantity += qty;
+        }
         return acc;
       },
-      { totalQuantity: 0, totalValue: 0, totalInvestment: 0 }
+      { totalQuantity: 0, totalValue: 0, totalInvestment: 0, pricedQuantity: 0 }
     );
   }
 
@@ -272,6 +278,9 @@ export default function AssetTable({ portfolio, canEdit = true }) {
   const renderPnL = (pct, amount, fixedIncome) => {
     if (fixedIncome) {
       return <span className="pt-holdings-muted">Hold at cost</span>;
+    }
+    if (pct === null || pct === undefined || amount === null || amount === undefined) {
+      return <span className="pt-holdings-muted">—</span>;
     }
     const positive = pct >= 0;
     return (
@@ -436,13 +445,17 @@ export default function AssetTable({ portfolio, canEdit = true }) {
                 totals.totalQuantity > 0
                   ? totals.totalInvestment / totals.totalQuantity
                   : 0;
-              const currentPrice =
-                totals.totalQuantity > 0
-                  ? totals.totalValue / totals.totalQuantity
-                  : 0;
+              const hasLivePrice = totals.pricedQuantity > 0;
+              const currentPrice = hasLivePrice
+                ? totals.totalValue / totals.pricedQuantity
+                : null;
               const groupPnL =
-                avgPrice > 0 ? calculatePnL(currentPrice, avgPrice) : 0;
-              const groupPnLValue = totals.totalValue - totals.totalInvestment;
+                hasLivePrice && avgPrice > 0
+                  ? calculatePnL(currentPrice, avgPrice)
+                  : null;
+              const groupPnLValue = hasLivePrice
+                ? totals.totalValue - totals.totalInvestment
+                : null;
 
               return (
                 <React.Fragment key={key}>
@@ -495,11 +508,17 @@ export default function AssetTable({ portfolio, canEdit = true }) {
                       )}
                     </td>
                     <td>
-                      {fixedIncome ? "—" : formatCurrency(currentPrice)}
+                      {fixedIncome
+                        ? "—"
+                        : hasLivePrice
+                          ? formatCurrency(currentPrice)
+                          : "—"}
                     </td>
                     <td>
                       <span className="pt-holdings-value">
-                        {formatCurrency(totals.totalValue)}
+                        {fixedIncome || hasLivePrice
+                          ? formatCurrency(totals.totalValue)
+                          : "—"}
                       </span>
                     </td>
                     <td>
@@ -507,7 +526,11 @@ export default function AssetTable({ portfolio, canEdit = true }) {
                         ? renderChange(null)
                         : renderChange(avgDailyChange)}
                     </td>
-                    <td>{renderPnL(groupPnL, groupPnLValue, fixedIncome)}</td>
+                    <td>
+                      {hasLivePrice || fixedIncome
+                        ? renderPnL(groupPnL, groupPnLValue, fixedIncome)
+                        : renderPnL(null, null, false)}
+                    </td>
                     {canEdit && <td>{renderActions(group)}</td>}
                   </tr>
                   <tr>
@@ -518,15 +541,20 @@ export default function AssetTable({ portfolio, canEdit = true }) {
                       <Collapse in={isOpen}>
                         <div className="pt-holdings-lots-panel">
                           {assets.map((asset) => {
-                            const assetValue =
-                              asset.quantity * asset.currentPrice;
-                            const assetPnL = calculatePnL(
-                              asset.currentPrice,
-                              asset.averagePrice
-                            );
-                            const assetPnLValue =
-                              (asset.currentPrice - asset.averagePrice) *
-                              asset.quantity;
+                            const live = isPriceAvailable(asset);
+                            const assetValue = live
+                              ? asset.quantity * asset.currentPrice
+                              : null;
+                            const assetPnL = live
+                              ? calculatePnL(
+                                  asset.currentPrice,
+                                  asset.averagePrice
+                                )
+                              : null;
+                            const assetPnLValue = live
+                              ? (asset.currentPrice - asset.averagePrice) *
+                                asset.quantity
+                              : null;
                             const rowFixed = isFixedIncomeType(
                               resolveAssetType(asset)
                             );
@@ -559,7 +587,7 @@ export default function AssetTable({ portfolio, canEdit = true }) {
                                 <div style={{ textAlign: "right" }}>
                                   {rowFixed
                                     ? "—"
-                                    : Number(asset.currentPrice) > 0
+                                    : live
                                       ? formatCurrency(asset.currentPrice)
                                       : "—"}
                                 </div>
@@ -567,7 +595,9 @@ export default function AssetTable({ portfolio, canEdit = true }) {
                                   style={{ textAlign: "right" }}
                                   className="pt-holdings-value"
                                 >
-                                  {formatCurrency(assetValue)}
+                                  {live || rowFixed
+                                    ? formatCurrency(assetValue ?? 0)
+                                    : "—"}
                                 </div>
                                 <div style={{ textAlign: "right" }}>
                                   {rowFixed
@@ -630,13 +660,17 @@ export default function AssetTable({ portfolio, canEdit = true }) {
           totals.totalQuantity > 0
             ? totals.totalInvestment / totals.totalQuantity
             : 0;
-        const currentPrice =
-          totals.totalQuantity > 0
-            ? totals.totalValue / totals.totalQuantity
-            : 0;
+        const hasLivePrice = totals.pricedQuantity > 0;
+        const currentPrice = hasLivePrice
+          ? totals.totalValue / totals.pricedQuantity
+          : null;
         const groupPnL =
-          avgPrice > 0 ? calculatePnL(currentPrice, avgPrice) : 0;
-        const groupPnLValue = totals.totalValue - totals.totalInvestment;
+          hasLivePrice && avgPrice > 0
+            ? calculatePnL(currentPrice, avgPrice)
+            : null;
+        const groupPnLValue = hasLivePrice
+          ? totals.totalValue - totals.totalInvestment
+          : null;
 
         return (
           <div key={key} className="pt-holdings-card">
@@ -672,7 +706,9 @@ export default function AssetTable({ portfolio, canEdit = true }) {
               <div>
                 <div className="pt-holdings-card-label">Value</div>
                 <div className="pt-holdings-value">
-                  {formatCurrency(totals.totalValue)}
+                  {fixedIncome || hasLivePrice
+                    ? formatCurrency(totals.totalValue)
+                    : "—"}
                 </div>
               </div>
               <div>
@@ -698,7 +734,7 @@ export default function AssetTable({ portfolio, canEdit = true }) {
                   <div>
                     <div className="pt-holdings-card-label">LTP</div>
                     <Text size="sm" fw={600}>
-                      {formatCurrency(currentPrice)}
+                      {hasLivePrice ? formatCurrency(currentPrice) : "—"}
                     </Text>
                   </div>
                 </>

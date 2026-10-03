@@ -46,14 +46,21 @@ export default function PerformanceChart({ portfolio }) {
 
     const allDatesSet = new Set();
     const priceMapBySymbol = {};
+    const costBySymbol = {};
 
     // Step 1: Collect all dates and map price history per symbol
     portfolio.assets.forEach((asset) => {
       const symbol = asset.symbol;
       if (!priceMapBySymbol[symbol]) priceMapBySymbol[symbol] = {};
+      const avg = Number(asset.averagePrice);
+      if (Number.isFinite(avg) && avg > 0) {
+        costBySymbol[symbol] = avg;
+      }
       (asset.priceHistory || []).forEach(({ date, price }) => {
+        const n = Number(price);
+        if (!Number.isFinite(n) || n <= 0) return;
         const dateKey = new Date(date).toISOString().split("T")[0];
-        priceMapBySymbol[symbol][dateKey] = price;
+        priceMapBySymbol[symbol][dateKey] = n;
         allDatesSet.add(dateKey);
       });
     });
@@ -71,14 +78,21 @@ export default function PerformanceChart({ portfolio }) {
 
     const carriedPrice = (symbol, date) => {
       const priceMap = priceMapBySymbol[symbol];
-      if (!priceMap) return null;
-      let last = null;
-      for (const d of Object.keys(priceMap)) {
-        if (new Date(d) <= new Date(date) && (!last || new Date(d) > new Date(last))) {
-          last = d;
+      if (priceMap) {
+        let last = null;
+        for (const d of Object.keys(priceMap)) {
+          if (
+            new Date(d) <= new Date(date) &&
+            (!last || new Date(d) > new Date(last))
+          ) {
+            last = d;
+          }
         }
+        if (last) return priceMap[last];
       }
-      return last ? priceMap[last] : null;
+      // Fall back to cost so missing LTP never plots portfolio value as ₹0
+      const cost = costBySymbol[symbol];
+      return Number.isFinite(cost) && cost > 0 ? cost : null;
     };
 
     const labels = [];
@@ -123,12 +137,14 @@ export default function PerformanceChart({ portfolio }) {
       // Legacy mode (no ledger): value of current holdings over time
       const assetHistories = portfolio.assets.map((asset) => ({
         quantity: asset.quantity,
+        symbol: asset.symbol,
         priceMap: priceMapBySymbol[asset.symbol] || {},
+        cost: Number(asset.averagePrice) || 0,
       }));
 
       allDates.forEach((date) => {
         let totalValue = 0;
-        assetHistories.forEach(({ quantity, priceMap }) => {
+        assetHistories.forEach(({ quantity, priceMap, cost }) => {
           const availableDates = Object.keys(priceMap).filter(
             (d) => new Date(d) <= new Date(date)
           );
@@ -137,6 +153,8 @@ export default function PerformanceChart({ portfolio }) {
               (a, b) => new Date(b) - new Date(a)
             )[0];
             totalValue += quantity * priceMap[lastKnownDate];
+          } else if (cost > 0) {
+            totalValue += quantity * cost;
           }
         });
         labels.push(date);

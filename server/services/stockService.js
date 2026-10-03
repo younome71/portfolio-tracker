@@ -93,12 +93,84 @@ function extractPrice(quote) {
     quote.regularMarketPreviousClose,
     quote.postMarketPrice,
     quote.preMarketPrice,
+    quote.chartPreviousClose,
   ];
   for (const value of candidates) {
     const n = Number(value);
     if (Number.isFinite(n) && n > 0) return n;
   }
   return null;
+}
+
+/**
+ * Last usable daily close from Yahoo chart — used when quote() is empty
+ * after hours or briefly unavailable for newly listed names.
+ */
+async function fetchLastCloseFromChart(symbol) {
+  const nseSymbol = toNseStored(symbol) || String(symbol).toUpperCase();
+  const yahooSymbol = toYahooSymbol(nseSymbol);
+  if (!yahooSymbol) {
+    throw new Error(`Invalid symbol: ${symbol}`);
+  }
+
+  const yf = await getYahooFinance();
+  const period1 = new Date(Date.now() - 21 * 24 * 60 * 60 * 1000);
+  const chart = await yf.chart(yahooSymbol, { period1, interval: '1d' });
+
+  const metaPrice = Number(chart?.meta?.regularMarketPrice);
+  if (Number.isFinite(metaPrice) && metaPrice > 0) return metaPrice;
+
+  const metaPrev = Number(
+    chart?.meta?.chartPreviousClose ?? chart?.meta?.previousClose
+  );
+  if (Number.isFinite(metaPrev) && metaPrev > 0) return metaPrev;
+
+  const quotes = [...(chart?.quotes || [])].reverse();
+  for (const q of quotes) {
+    const close = Number(q?.close ?? q?.adjclose);
+    if (Number.isFinite(close) && close > 0) return close;
+  }
+
+  throw new Error(`No chart price data for ${symbol} (${yahooSymbol})`);
+}
+
+async function withRetries(fn, { retries = 2, delayMs = 250 } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (attempt < retries) await sleep(delayMs * (attempt + 1));
+    }
+  }
+  throw lastErr;
+}
+
+/**
+ * Persist portfolio price mutations even when another request bumped __v
+ * (add/sell/list refresh races were dropping after-hours LTP saves).
+ */
+async function savePortfolioWithRetry(portfolio, reapply) {
+  let doc = portfolio;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await doc.save();
+      return doc;
+    } catch (err) {
+      const isVersion =
+        err?.name === 'VersionError' ||
+        /No matching document found for id/i.test(String(err?.message || ''));
+      if (!isVersion || attempt === 2) {
+        throw err;
+      }
+      const fresh = await Portfolio.findById(doc._id);
+      if (!fresh) throw err;
+      if (typeof reapply === 'function') reapply(fresh);
+      doc = fresh;
+    }
+  }
+  return doc;
 }
 
 /** Always price equities against NSE Yahoo symbol for this product. */
@@ -178,6 +250,33 @@ async function fetchCommodityPriceInrPerGram(symbol) {
   return inrPerGram;
 }
 
+async function fetchEquityPriceUncached(symbol) {
+  const nseSymbol = toNseStored(symbol) || String(symbol).toUpperCase();
+  const yahooSymbol = toYahooSymbol(nseSymbol);
+  if (!yahooSymbol) {
+    throw new Error(`Invalid symbol: ${symbol}`);
+  }
+
+  const yf = await getYahooFinance();
+
+  try {
+    const quote = await withRetries(() => yf.quote(yahooSymbol), {
+      retries: 2,
+      delayMs: 200,
+    });
+    const ltp = extractPrice(quote);
+    if (ltp !== null) return { price: ltp, yahooSymbol };
+  } catch (quoteErr) {
+    logger.warn(
+      `Quote failed for ${yahooSymbol}, trying chart close: ${quoteErr.message}`
+    );
+  }
+
+  // After hours / thin quotes: last session close from chart
+  const chartPrice = await fetchLastCloseFromChart(nseSymbol);
+  return { price: chartPrice, yahooSymbol };
+}
+
 async function fetchStockPrice(symbol) {
   if (isCommoditySymbol(symbol)) {
     return fetchCommodityPriceInrPerGram(symbol);
@@ -191,16 +290,9 @@ async function fetchStockPrice(symbol) {
     return cacheEntry.price;
   }
 
-  const yahooSymbol = toYahooSymbol(nseSymbol);
-  if (!yahooSymbol) {
-    throw new Error(`Invalid symbol: ${symbol}`);
-  }
+  const { price: ltp, yahooSymbol } = await fetchEquityPriceUncached(nseSymbol);
 
-  const yf = await getYahooFinance();
-  const quote = await yf.quote(yahooSymbol);
-  const ltp = extractPrice(quote);
-
-  if (ltp === null) {
+  if (!Number.isFinite(ltp) || ltp <= 0) {
     throw new Error(`No price data for ${symbol} (${yahooSymbol})`);
   }
 
@@ -297,6 +389,28 @@ async function fetchPricesForSymbols(symbols) {
   return results;
 }
 
+function ensurePurchaseCostSeed(asset, now) {
+  const avg = Number(asset.averagePrice);
+  const boughtAt = asset.purchaseDate || asset.createdAt;
+  if (!Number.isFinite(avg) || avg <= 0 || !boughtAt) return false;
+
+  const boughtKey = istDayKey(new Date(boughtAt));
+  const todayKey = istDayKey(now);
+  if (boughtKey === todayKey) return false;
+
+  if (!Array.isArray(asset.priceHistory)) {
+    asset.priceHistory = [];
+  }
+
+  const hasBuyDay = asset.priceHistory.some(
+    (entry) => istDayKey(new Date(entry.date)) === boughtKey
+  );
+  if (hasBuyDay) return false;
+
+  asset.priceHistory.unshift({ date: new Date(boughtAt), price: avg });
+  return true;
+}
+
 function applyPriceToAsset(asset, price, now, todayKey) {
   let changed = false;
   const assetType = resolveAssetType(asset);
@@ -315,6 +429,10 @@ function applyPriceToAsset(asset, price, now, todayKey) {
   }
 
   if (!Number.isFinite(price) || price <= 0) return changed;
+
+  if (ensurePurchaseCostSeed(asset, now)) {
+    changed = true;
+  }
 
   if (!Array.isArray(asset.priceHistory)) {
     asset.priceHistory = [];
@@ -335,6 +453,22 @@ function applyPriceToAsset(asset, price, now, todayKey) {
     changed = true;
   }
 
+  return changed;
+}
+
+function applyPriceMapToPortfolio(portfolio, priceMap, now, todayKey) {
+  let changed = false;
+  for (const asset of portfolio.assets) {
+    if (!isMarketPricedType(resolveAssetType(asset))) continue;
+    const key = isCommoditySymbol(asset.symbol)
+      ? String(asset.symbol).toUpperCase().split('.')[0]
+      : toNseStored(asset.symbol);
+    const price = priceMap.get(key);
+    if (!Number.isFinite(price) || price <= 0) continue;
+    if (applyPriceToAsset(asset, price, now, todayKey)) {
+      changed = true;
+    }
+  }
   return changed;
 }
 
@@ -361,23 +495,13 @@ async function refreshPortfolioPrices(portfolio) {
 
   const now = new Date();
   const todayKey = istDayKey(now);
-  let changed = false;
-
-  for (const asset of portfolio.assets) {
-    if (!isMarketPricedType(resolveAssetType(asset))) continue;
-    const key = isCommoditySymbol(asset.symbol)
-      ? String(asset.symbol).toUpperCase().split('.')[0]
-      : toNseStored(asset.symbol);
-    const price = priceMap.get(key);
-    if (price == null) continue;
-    if (applyPriceToAsset(asset, price, now, todayKey)) {
-      changed = true;
-    }
-  }
+  const changed = applyPriceMapToPortfolio(portfolio, priceMap, now, todayKey);
 
   if (changed) {
     try {
-      await portfolio.save();
+      await savePortfolioWithRetry(portfolio, (fresh) => {
+        applyPriceMapToPortfolio(fresh, priceMap, now, todayKey);
+      });
     } catch (err) {
       logger.error(`Failed saving refreshed prices for ${portfolio._id}: ${err.message}`);
     }
@@ -414,23 +538,13 @@ async function runUpdateJob() {
   const todayKey = istDayKey(now);
 
   for (const portfolio of portfolios) {
-    let changed = false;
-
-    for (const asset of portfolio.assets) {
-      if (!isMarketPricedType(resolveAssetType(asset))) continue;
-      const key = isCommoditySymbol(asset.symbol)
-        ? String(asset.symbol).toUpperCase().split('.')[0]
-        : toNseStored(asset.symbol);
-      const currentPrice = priceMap.get(key);
-      if (!Number.isFinite(currentPrice) || currentPrice <= 0) continue;
-      if (applyPriceToAsset(asset, currentPrice, now, todayKey)) {
-        changed = true;
-      }
-    }
+    const changed = applyPriceMapToPortfolio(portfolio, priceMap, now, todayKey);
 
     if (changed) {
       try {
-        await portfolio.save();
+        await savePortfolioWithRetry(portfolio, (fresh) => {
+          applyPriceMapToPortfolio(fresh, priceMap, now, todayKey);
+        });
       } catch (saveErr) {
         logger.error(
           `Failed saving portfolio ${portfolio._id}: ${saveErr.message}`

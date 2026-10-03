@@ -68,7 +68,6 @@ function parsePurchaseDateInput(value) {
 }
 
 function buildInitialPriceHistory(boughtAt, avgPrice, currentPrice, priceAvailable) {
-  if (!priceAvailable) return [];
   const now = new Date();
   const history = [];
   const boughtMs = new Date(boughtAt).getTime();
@@ -76,11 +75,19 @@ function buildInitialPriceHistory(boughtAt, avgPrice, currentPrice, priceAvailab
     !Number.isNaN(boughtMs) &&
     new Date(boughtAt).toDateString() === now.toDateString();
 
-  // Seed cost basis on the purchase date so charts / history aren't "today-only"
+  // Always seed cost basis on the purchase date so charts never start at ₹0
+  // when LTP fetch is delayed (common after hours / weekends).
   if (!sameDay && Number.isFinite(avgPrice) && avgPrice > 0) {
     history.push({ date: new Date(boughtAt), price: avgPrice });
   }
-  history.push({ date: now, price: currentPrice });
+
+  if (priceAvailable && Number.isFinite(currentPrice) && currentPrice > 0) {
+    history.push({ date: now, price: currentPrice });
+  } else if (sameDay && Number.isFinite(avgPrice) && avgPrice > 0) {
+    // Same-day buy without a live quote yet — hold at cost until refresh.
+    history.push({ date: now, price: avgPrice });
+  }
+
   return history;
 }
 
@@ -522,11 +529,17 @@ exports.addAsset = async (req, res) => {
       date: boughtAt,
     };
 
-    const updated = await Portfolio.findOneAndUpdate(
+    let updated = await Portfolio.findOneAndUpdate(
       { _id: portfolioId, owner: userId },
       { $push: { assets: newAsset, transactions: buyTransaction } },
       { new: true }
     );
+
+    // Always re-sync market price after insert so after-hours / transient Yahoo
+    // misses still land in currentPrice + priceHistory before the client returns.
+    if (updated && (assetType === 'EQUITY' || assetType === 'COMMODITY')) {
+      updated = await refreshPortfolioPrices(updated);
+    }
 
     return sendSuccess(res, updated);
   } catch (err) {
