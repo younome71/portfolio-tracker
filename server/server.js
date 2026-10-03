@@ -9,9 +9,14 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const cron = require('node-cron');
 const { updateStockPrices } = require('./services/stockService');
+const {
+  syncStockUniverse,
+  ensureStockUniverse,
+} = require('./services/stockUniverseService');
 const authRoutes = require('./routes/auth');
 const portfolioRoutes = require('./routes/portfolio');
 const userRoutes = require('./routes/user');
+const stockRoutes = require('./routes/stocks');
 const errorHandler = require('./middlewares/error');
 const { requestIdMiddleware, sendError, sendSuccess } = require('./utils/apiResponse');
 const logger = require('./utils/logger');
@@ -79,6 +84,7 @@ app.use('/api', apiLimiter);
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/portfolio', portfolioRoutes);
 app.use('/api/user', userRoutes);
+app.use('/api/stocks', stockRoutes);
 
 app.post('/api/admin/manual-update', async (req, res) => {
   const adminKey = process.env.ADMIN_KEY;
@@ -95,6 +101,23 @@ app.post('/api/admin/manual-update', async (req, res) => {
   } catch (error) {
     logger.error(`Manual stock update error: ${error.message}`);
     return sendError(res, 500, 'UPDATE_FAILED', 'Failed to start stock price update');
+  }
+});
+
+app.post('/api/admin/sync-stocks', async (req, res) => {
+  const adminKey = process.env.ADMIN_KEY;
+  if (!adminKey || req.header('X-Admin-Key') !== adminKey) {
+    return sendError(res, 403, 'FORBIDDEN', 'Admin key required');
+  }
+
+  try {
+    syncStockUniverse().catch((err) =>
+      logger.error(`Manual stock universe sync failed: ${err.message}`)
+    );
+    return sendSuccess(res, { accepted: true }, 202);
+  } catch (error) {
+    logger.error(`Manual stock universe sync error: ${error.message}`);
+    return sendError(res, 500, 'SYNC_FAILED', 'Failed to start stock universe sync');
   }
 });
 
@@ -129,7 +152,22 @@ async function start() {
     );
   });
 
-  // Initial update after boot (non-blocking)
+  // Daily NSE equity universe sync (new IPOs) at 06:00 IST
+  cron.schedule(
+    '0 6 * * *',
+    () => {
+      logger.info('Running scheduled stock universe sync...');
+      syncStockUniverse().catch((err) =>
+        logger.error(`Scheduled universe sync failed: ${err.message}`)
+      );
+    },
+    { timezone: 'Asia/Kolkata' }
+  );
+
+  // Seed universe if empty, then refresh prices (both non-blocking)
+  ensureStockUniverse().catch((err) =>
+    logger.error(`Initial stock universe sync failed: ${err.message}`)
+  );
   updateStockPrices().catch((err) =>
     logger.error(`Initial stock price update failed: ${err.message}`)
   );

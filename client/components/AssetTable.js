@@ -750,7 +750,11 @@ export default function AssetTable({ portfolio, canEdit = true }) {
   if (!portfolio?.assets?.length) {
     return (
       <Box py="xl" style={{ textAlign: "center" }}>
-        <Text color="dimmed">No holdings yet. Add your first asset.</Text>
+        <Text color="dimmed">
+          {canEdit
+            ? "No holdings yet. Add your first asset."
+            : "No holdings in this portfolio."}
+        </Text>
       </Box>
     );
   }

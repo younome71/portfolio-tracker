@@ -37,7 +37,7 @@ export default function PortfolioDetail() {
   const { id } = router.query;
   const dispatch = useDispatch();
   const theme = useMantineTheme();
-  const { isAuthenticated, hydrated, loading: authLoading } = useSelector(
+  const { isAuthenticated, hydrated, loading: authLoading, user } = useSelector(
     (state) => state.auth
   );
   const { currentPortfolio, loading, error } = useSelector(
@@ -112,6 +112,13 @@ export default function PortfolioDetail() {
     );
   }
 
+  const canManage =
+    currentPortfolio.viewerIsOwner === true ||
+    (user?.id &&
+      currentPortfolio.owner &&
+      String(currentPortfolio.owner._id || currentPortfolio.owner) ===
+        String(user.id));
+
   return (
     <Layout title={currentPortfolio.name}>
       <Container size="xl" py="md">
@@ -122,7 +129,9 @@ export default function PortfolioDetail() {
                 {currentPortfolio.name || "Portfolio Details"}
               </Title>
               <Text color="dimmed" size="sm">
-                {currentPortfolio.description || "Your investment portfolio"}
+                {currentPortfolio.owner?.name && !canManage
+                  ? `${currentPortfolio.owner.name}'s portfolio · view only`
+                  : currentPortfolio.description || "Your investment portfolio"}
               </Text>
             </div>
             <Group spacing="sm">
@@ -160,31 +169,36 @@ export default function PortfolioDetail() {
               <div>
                 <h2 className="pt-holdings-section-title">Asset Holdings</h2>
                 <p className="pt-holdings-section-sub">
-                  Live values · grouped by security
+                  {canManage
+                    ? "Live values · grouped by security"
+                    : "Live values · view only"}
                 </p>
               </div>
-              <Button
-                leftIcon={<IconPlus size={16} />}
-                onClick={() => router.push(`/portfolio/${id}/add-asset`)}
-                color="teal"
-                size="md"
-                radius="md"
-                styles={{
-                  root: {
-                    background: "var(--pt-teal)",
-                    fontFamily: "var(--pt-display)",
-                    fontWeight: 700,
-                    "&:hover": { background: "var(--pt-teal-deep)" },
-                  },
-                }}
-              >
-                Add Asset
-              </Button>
+              {canManage && (
+                <Button
+                  leftIcon={<IconPlus size={16} />}
+                  onClick={() => router.push(`/portfolio/${id}/add-asset`)}
+                  color="teal"
+                  size="md"
+                  radius="md"
+                  styles={{
+                    root: {
+                      background: "var(--pt-teal)",
+                      fontFamily: "var(--pt-display)",
+                      fontWeight: 700,
+                      "&:hover": { background: "var(--pt-teal-deep)" },
+                    },
+                  }}
+                >
+                  Add Asset
+                </Button>
+              )}
             </div>
             <div style={{ padding: "0.85rem" }}>
               <AssetTable
                 portfolio={currentPortfolio}
                 onViewPerformance={handleViewAssetPerformance}
+                canEdit={canManage}
               />
             </div>
           </div>

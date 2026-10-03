@@ -542,7 +542,7 @@ export default function Home() {
                         Family Portfolios
                       </Text>
                       <Text size="xs" color="dimmed">
-                        Shared investment accounts
+                        Managed by you and portfolios from linked members
                       </Text>
                     </div>
                   </Group>

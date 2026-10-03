@@ -27,6 +27,7 @@ import {
   getBaseSymbol,
   isCommoditySymbol,
 } from "../../../utils/symbols";
+import api from "../../../utils/api";
 
 const INSTRUMENT_OPTIONS = [
   { value: "EQUITY", label: "Equity (Stock)" },
@@ -119,14 +120,16 @@ export default function RepeatAssetPage() {
   const [stockOptions, setStockOptions] = useState([]);
 
   useEffect(() => {
-    fetch("/bse_stocks.json")
-      .then((res) => res.json())
-      .then((data) => {
-        const options = data.map((stock) => ({
-          value: stock.id,
-          label: `${stock.name} (${stock.id})`,
-        }));
-        setStockOptions(options);
+    api
+      .get("/stocks")
+      .then((res) => {
+        const stocks = res.data?.data?.stocks || [];
+        setStockOptions(
+          stocks.map((stock) => ({
+            value: stock.id,
+            label: `${stock.name} (${stock.id})`,
+          }))
+        );
       })
       .catch((err) => console.error("Failed to load stock list:", err));
   }, []);

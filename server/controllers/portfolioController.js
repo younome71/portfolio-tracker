@@ -22,6 +22,31 @@ const {
 } = require('../utils/returns');
 const logger = require('../utils/logger');
 
+function ownerIdOf(portfolio) {
+  const owner = portfolio.owner;
+  if (!owner) return null;
+  return (owner._id || owner).toString();
+}
+
+function familyMemberIdOf(portfolio) {
+  const fm = portfolio.familyMember;
+  if (!fm) return null;
+  return (fm._id || fm).toString();
+}
+
+/** Parent can view portfolios owned by linked family members; members can view parent-managed family portfolios tagged to them. */
+function canViewPortfolio(user, portfolio) {
+  if (!user || !portfolio) return false;
+  const userId = user._id ? user._id.toString() : String(user.id || user);
+  const ownerId = ownerIdOf(portfolio);
+  if (ownerId === userId) return true;
+  if (familyMemberIdOf(portfolio) === userId) return true;
+  if (user.role === 'parent' && Array.isArray(user.familyMembers)) {
+    return user.familyMembers.some((id) => id.toString() === ownerId);
+  }
+  return false;
+}
+
 function resolveAssetType(asset) {
   if (asset?.assetType) return asset.assetType;
   if (isCommoditySymbol(asset?.symbol)) return 'COMMODITY';
@@ -187,6 +212,7 @@ function computePortfolioMetrics(portfolio) {
     description: portfolio.description || '',
     isFamilyPortfolio: portfolio.isFamilyPortfolio,
     familyMember: portfolio.familyMember,
+    owner: portfolio.owner,
     totalValue,
     totalCost,
     totalProfit,
@@ -233,12 +259,27 @@ exports.getPortfolios = async (req, res) => {
 
     let familyDocs = [];
     if (user.role === 'parent') {
-      familyDocs = await Portfolio.find({
+      const memberIds = user.familyMembers || [];
+
+      const managedByParent = await Portfolio.find({
         owner: userId,
         isFamilyPortfolio: true,
       }).populate('familyMember', 'name email');
+
+      // Portfolios the linked members created in their own accounts
+      const memberOwned =
+        memberIds.length > 0
+          ? await Portfolio.find({
+              owner: { $in: memberIds },
+            })
+              .populate('owner', 'name email')
+              .populate('familyMember', 'name email')
+          : [];
+
+      familyDocs = [...managedByParent, ...memberOwned];
       await Promise.all(familyDocs.map((doc) => refreshPortfolioPrices(doc)));
-    } else if (user.role === 'child') {
+    } else {
+      // Child / investor: parent-managed family portfolios tagged to them
       familyDocs = await Portfolio.find({
         familyMember: userId,
         isFamilyPortfolio: true,
@@ -661,18 +702,25 @@ exports.getPortfolioPerformance = async (req, res) => {
     const { portfolioId } = req.params;
     const userId = req.user.id;
 
-    const portfolio = await Portfolio.findOne({
-      _id: portfolioId,
-      $or: [{ owner: userId }, { familyMember: userId }],
-    });
+    const user = await User.findById(userId).lean();
+    if (!user) {
+      return sendError(res, 404, 'USER_NOT_FOUND', 'User not found');
+    }
 
-    if (!portfolio) {
+    const portfolio = await Portfolio.findById(portfolioId)
+      .populate('owner', 'name email')
+      .populate('familyMember', 'name email');
+
+    if (!portfolio || !canViewPortfolio(user, portfolio)) {
       return sendError(res, 404, 'PORTFOLIO_NOT_FOUND', 'Portfolio not found');
     }
 
     await refreshPortfolioPrices(portfolio);
 
-    return sendSuccess(res, computePortfolioMetrics(portfolio));
+    const metrics = computePortfolioMetrics(portfolio);
+    metrics.viewerIsOwner = ownerIdOf(portfolio) === userId.toString();
+
+    return sendSuccess(res, metrics);
   } catch (err) {
     logger.error(err.message, { requestId: res.locals.requestId });
     return sendError(res, 500, 'INTERNAL_ERROR', 'Server Error');

@@ -86,9 +86,20 @@ export default function PortfolioSummary({ title, portfolios, isFamily }) {
                 })}
               >
                 <Group position="apart">
-                  <Text weight={600} size="lg">
-                    {portfolio.name}
-                  </Text>
+                  <div>
+                    <Text weight={600} size="lg">
+                      {portfolio.name}
+                    </Text>
+                    {(portfolio.owner?.name || portfolio.familyMember?.name) && (
+                      <Text size="xs" color="dimmed">
+                        {portfolio.isFamilyPortfolio && portfolio.familyMember?.name
+                          ? `Managed for ${portfolio.familyMember.name}`
+                          : portfolio.owner?.name
+                            ? `${portfolio.owner.name}'s portfolio`
+                            : null}
+                      </Text>
+                    )}
+                  </div>
                   <Text weight={700} size="xl">
                     {formatCurrency(totalValue)}
                   </Text>
